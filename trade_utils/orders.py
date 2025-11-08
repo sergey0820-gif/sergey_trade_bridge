@@ -85,3 +85,10 @@ async def post_order_safe(
         order_type=order_type,
         quantity=int(qty_lots),
     )
+
+# Compatibility wrapper for sync code
+def post_order_safe_sync(*args, **kwargs):
+    import asyncio
+    # NB: asyncio.run() нельзя вызывать, если цикл уже запущен.
+    # В обычных скриптах это безопасно.
+    return asyncio.run(post_order_safe(*args, **kwargs))

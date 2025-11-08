@@ -57,7 +57,7 @@ def place_order(ticker, class_code, side, entry, stop, target):
 
         direction = OrderDirection.ORDER_DIRECTION_BUY if side == "buy" else OrderDirection.ORDER_DIRECTION_SELL
 
-        order = client.orders.post_order(
+        order = await post_order_safe(client, 
             figi=figi,
             quantity=quantity,
             direction=direction,
