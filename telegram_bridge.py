@@ -1,0 +1,139 @@
+import os
+import csv
+import logging
+from uuid import uuid4
+import subprocess
+from dotenv import load_dotenv
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update
+from telegram.ext import Application
+from telegram.ext import filters
+from telegram.ext import MessageHandler
+from telegram.ext import CommandHandler, CallbackQueryHandler, CommandHandler, ContextTypes, JobQueue
+
+load_dotenv()
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID"))
+CANDIDATES_CSV = "candidates.csv"
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+
+def load_candidates():
+    candidates = []
+    if not os.path.exists(CANDIDATES_CSV):
+        return candidates
+
+    with open(CANDIDATES_CSV, newline="", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            candidates.append(row)
+    return candidates
+
+
+def build_message(candidate):
+    return (
+        f"📈 <b>{candidate['ticker']}</b> ({candidate['class_code']})\n"
+        f"📊 <b>{candidate['side'].upper()}</b> @ {candidate['entry']}\n"
+        f"🎯 Target: {candidate['target']} | 🛑 Stop: {candidate['stop']}\n"
+        f"RSI D1: {candidate['rsi_d1']} | RSI H4: {candidate['rsi_h4']}\n"
+        f"Объём: x{candidate['volume_ratio']}\n"
+        f"Паттерн: {candidate['pattern'] or '—'}\n"
+        f"🕒 {candidate['timestamp']}"
+    )
+
+
+def build_keyboard(index):
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Войти", callback_data=f"enter_{index}"),
+                InlineKeyboardButton("❌ Пропустить", callback_data=f"skip_{index}"),
+            ]
+        ]
+    )
+
+
+async def send_signals(context: ContextTypes.DEFAULT_TYPE):
+    candidates = load_candidates()
+    if not candidates:
+        return
+
+    for index, candidate in enumerate(candidates):
+        message = build_message(candidate)
+        keyboard = build_keyboard(index)
+        await context.bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=message,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 Бот работает. Ожидайте сигналы...")
+
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data.startswith("enter_"):
+        index = int(data.split("_")[1])
+        candidates = load_candidates()
+        if index >= len(candidates):
+            await query.edit_message_text("⚠️ Сигнал устарел или не найден.")
+            return
+
+        candidate = candidates[index]
+
+        # Преобразуем side: short → sell, long → buy
+        raw_side = candidate["side"].lower()
+        side = "sell" if raw_side == "short" else "buy"
+
+        try:
+            subprocess.run(
+                [
+                    "python", "trade_executor.py",
+                    "--ticker", candidate["ticker"],
+                    "--class_code", candidate["class_code"],
+                    "--side", side,
+                    "--entry", candidate["entry"],
+                    "--stop", candidate["stop"],
+                    "--target", candidate["target"],
+                ],
+                check=True
+            )
+            await query.edit_message_text("✅ Сделка размещена.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Ошибка при запуске trade_executor.py: {e}")
+            await query.edit_message_text("❌ Ошибка при размещении сделки.")
+
+    elif data.startswith("skip_"):
+        await query.edit_message_text("⏭️ Сигнал пропущен.")
+
+
+from telegram import Update
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, JobQueue
+
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("pong")
+
+def main():
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("ping", ping))
+    application.add_handler(CallbackQueryHandler(handle_callback))
+    job_queue: JobQueue = application.job_queue
+    job_queue.run_once(send_signals, when=5)
+    print("🤖 Telegram бот запущен...")
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()

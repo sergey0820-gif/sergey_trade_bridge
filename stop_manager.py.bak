@@ -46,7 +46,7 @@ def cancel_all_stops_for_uid(client: Client, account_id: str, instrument_uid: st
     resp = client.stop_orders.get_stop_orders(account_id=account_id)
     for so in resp.stop_orders:
         if so.instrument_uid == instrument_uid:
-            client.stop_orders.cancel_stop_order(account_id=account_id, stop_order_id=str(__import__("uuid").uuid4()))
+            client.stop_orders.cancel_stop_order(account_id=account_id, stop_order_id=so.stop_order_id)
 
 def main():
     logging.info("🚦 Запуск stop_manager.py")

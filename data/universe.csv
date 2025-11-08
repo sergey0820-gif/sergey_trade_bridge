@@ -1,0 +1,538 @@
+figi,ticker,class_,name,exch,lot,mpi,currency,is_traded
+BBG004S68CV8,VSMO,stock,ВСМПО-АВИСМА,moex_mrng_evng_e_wknd_dlr,1,20.0,rub,True
+BBG000Q7ZZY2,UNAC,stock,Объединенная авиастроительная корпорация,moex_mrng_evng_e_wknd_dlr,1000,0.0005,rub,True
+TCS00A10ANA1,CNRU,stock,Циан,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+TCS00A106YF0,VKCO,stock,ВК,moex_mrng_evng_e_wknd_dlr,1,0.1,rub,True
+TCS0418T1088,CIAN@US,stock,Циан АДР,unknown,1,0.01,usd,True
+BBG004RVFCY3,MGNT,stock,Магнит,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+TCS009124010,KZIZ,stock,Красногорский завод им. С.А. Зверева - ао,otc_ncc,1,0.01,rub,True
+BBG0029SG1C1,KZOSP,stock,Казаньоргсинтез - акции привилегированные,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+TCS00A105EX7,WUSH,stock,Whoosh,moex_mrng_evng_e_wknd_dlr,1,0.01,rub,True
+TCS00A0JPP37,UGLD,stock,Южуралзолото ГК,moex_morning_weekend,1000,0.0001,rub,True
+BBG000SK7JS5,LNZL,stock,Лензолото,moex_mrng_evng_e_wknd_dlr,1,10.0,rub,True
+BBG002458LF8,SELG,stock,Селигдар,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+TCS009086904,SLAV,stock,Славнефть,otc_ncc,1,0.01,rub,True
+TCS00A0JNXF9,PRFN,stock,ЧЗПСН-Профнастил,moex_mrng_evng_e_wknd_dlr,100,0.002,rub,True
+TCS00A105NV2,CARM,stock,КарМани,moex_mrng_evng_e_wknd_dlr,100,0.0005,rub,True
+BBG008F2T3T2,RUAL,stock,РУСАЛ,moex_mrng_evng_e_wknd_dlr,10,0.005,rub,True
+BBG00BGKYH17,NKHP,stock,НКХП,moex_mrng_evng_e_wknd_dlr,10,0.5,rub,True
+TCS00A0F61T7,TGKJ,stock,Форвард Энерго,otc_ncc,1,0.01,rub,True
+BBG004S68B31,ALRS,stock,АЛРОСА,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+TCS00A107ER5,DIAS,stock,Диасофт,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG004RVFFC0,TATN,stock,Татнефть,moex_mrng_evng_e_wknd_dlr,1,0.1,rub,True
+BBG004S682Z6,RTKM,stock,Ростелеком,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+TCS30A108JF7,PRMD,stock,Промомед,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+BBG000RG4ZQ4,TGKN,stock,ТГК-14,moex_mrng_evng_e_wknd_dlr,100000,1e-05,rub,True
+BBG00475KHX6,TRNFP,stock,Транснефть - привилегированные акции,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+BBG000QFB4J6,ZILLP,stock,ЗИЛ - акции привилегированные,otc_ncc,1,0.01,rub,True
+TCS90A0JQUZ6,RAGR,stock,РусАгро,moex_mrng_evng_e_wknd_dlr,1,0.02,rub,True
+BBG000RTHVK7,GCHE,stock,Группа Черкизово,moex_mrng_evng_e_wknd_dlr,1,1.0,rub,True
+TCS90A0JVBT9,UWGN,stock,ОВК,moex_mrng_evng_e_wknd_dlr,1,0.02,rub,True
+BBG004S681M2,SNGSP,stock,Сургутнефтегаз - привилегированные акции,moex_mrng_evng_e_wknd_dlr,10,0.005,rub,True
+TCS40A10B5G8,FIXR,stock,"Публичное акционерное общество ""Фикс Прайс""",moex_mrng_evng_e_wknd_dlr,1000,0.0001,rub,True
+BBG000GQSRR5,NKNC,stock,Нижнекамскнефтехим,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+BBG000BX7DH0,VRSB,stock,ТНС энерго Воронеж,moex_mrng_evng_e_wknd_dlr,10,0.5,rub,True
+TCS00A0JRH43,MBNK,stock,МТС-Банк,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG004730JJ5,MOEX,stock,Московская Биржа,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+TCS009084453,NOMP,stock,Новошип - ао,otc_ncc,1,0.01,rub,True
+BBG000QCW561,VEON,stock,VEON,unknown,1,0.01,usd,True
+BBG002B9T6Y1,KAZTP,stock,КуйбышевАзот - Акции привилегированные,moex_mrng_evng_e_wknd_dlr,10,0.5,rub,True
+BBG0047315D0,SNGS,stock,Сургутнефтегаз,moex_mrng_evng_e_wknd_dlr,100,0.005,rub,True
+BBG000Q7GJ60,TGKBP,stock,ТГК-2 - акции привилегированные,moex_mrng_evng_e_wknd_dlr,100000,1e-05,rub,True
+BBG004S68BH6,PIKK,stock,ПИК,moex_mrng_evng_e_wknd_dlr,1,0.1,rub,True
+BBG004731354,ROSN,stock,Роснефть,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+TCS00A1002V2,EUTR,stock,ЕвроТранс,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+BBG000VKG4R5,MRKU,stock,Россети Урал,moex_mrng_evng_e_wknd_dlr,10000,0.0002,rub,True
+BBG000RMWQD4,ENPG,stock,Эн+,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+TCS80A107UL4,T,stock,Т-Технологии,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+TCS009102396,UFOSP,stock,Уфаоргсинтез - привилегированные акции,otc_ncc,1,0.01,rub,True
+BBG000PKWCQ7,MRKV,stock,Россети Волга,moex_mrng_evng_e_wknd_dlr,10000,5e-05,rub,True
+BBG000BBV4M5,CNTL,stock,Центральный Телеграф,moex_mrng_evng_e_wknd_dlr,100,0.02,rub,True
+TCS10A108K09,VSEH,stock,ВИ.РУ,moex_mrng_evng_e_wknd_dlr,1,0.01,rub,True
+BBG004S68JR8,SVAV,stock,СОЛЛЕРС,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG000LNHHJ9,KMAZ,stock,КАМАЗ,moex_mrng_evng_e_wknd_dlr,10,0.1,rub,True
+BBG0029SFXB3,KZOS,stock,Казаньоргсинтез - акции обыкновенные,moex_mrng_evng_e_wknd_dlr,10,0.1,rub,True
+BBG000F6YPH8,ELFV,stock,ЭЛ5-Энерго,moex_mrng_evng_e_wknd_dlr,1000,0.0002,rub,True
+TCS20A107662,HEAD,stock,Хэдхантер,moex_mrng_evng_e_wknd_dlr,1,1.0,rub,True
+TCS50A10C1L6,ETLN,stock,МКПАО Эталон Груп,moex_mrng_evng_e_wknd_dlr,1,0.02,rub,True
+BBG00F6NKQX3,SMLT,stock,ГК Самолет,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG004730N88,SBER,stock,Сбер Банк,moex_mrng_evng_e_wknd_dlr,1,0.01,rub,True
+TCS00A105BN4,GECO,stock,Генетико,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+BBG004730RP0,GAZP,stock,Газпром,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+BBG000QJW156,BSPB,stock,Банк Санкт-Петербург,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+BBG000NLC9Z6,LSNG,stock,Россети Ленэнерго,moex_mrng_evng_e_wknd_dlr,100,0.01,rub,True
+BBG00QKJSX05,RENI,stock,Ренессанс Страхование,moex_mrng_evng_e_wknd_dlr,10,0.02,rub,True
+TCS00A103X66,POSI,stock,Группа Позитив,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+BBG000NLB2G3,KROT,stock,Красный Октябрь,moex_mrng_evng_e_wknd_dlr,10,1.0,rub,True
+BBG004S684M6,SIBN,stock,Газпром нефть,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+BBG000DBD6F6,KLSB,stock,Калужская сбытовая компания,moex_mrng_evng_e_wknd_dlr,100,0.01,rub,True
+BBG000RP8V70,CHMK,stock,ЧМК,moex_mrng_evng_e_wknd_dlr,1,5.0,rub,True
+BBG000TJ6F42,MRKZ,stock,Россети Северо-Запад,moex_mrng_evng_e_wknd_dlr,10000,5e-05,rub,True
+BBG000K3STR7,APTK,stock,"Аптечная сеть 36,6",moex_mrng_evng_e_wknd_dlr,10,0.002,rub,True
+TCS0207L1061,HHR,stock,HeadHunter Group PLC,unknown,1,0.01,usd,True
+BBG00475K2X9,HYDR,stock,РусГидро,moex_mrng_evng_e_wknd_dlr,1000,0.0001,rub,True
+BBG000SR0YS4,LNZLP,stock,Лензолото - привилегированные акции,moex_mrng_evng_e_wknd_dlr,1,5.0,rub,True
+BBG003LYCMB1,SFIN,stock,ЭсЭфАй,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+BBG004S68696,RASP,stock,Распадская,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+TCS009177281,NOMPP,stock,Новошип - привилегированные акции,otc_ncc,1,0.01,rub,True
+BBG004731489,GMKN,stock,Норильский никель,moex_mrng_evng_e_wknd_dlr,10,0.02,rub,True
+BBG004S686W0,UPRO,stock,Юнипро,moex_mrng_evng_e_wknd_dlr,1000,0.001,rub,True
+BBG004S687W8,MSNG,stock,Мосэнерго,moex_mrng_evng_e_wknd_dlr,1000,0.0005,rub,True
+BBG004S68614,AFKS,stock,АФК Система,moex_mrng_evng_e_wknd_dlr,100,0.001,rub,True
+BBG000R607Y3,PLZL,stock,Полюс,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+TCS00A0ZZFS9,LEAS,stock,Европлан,moex_mrng_evng_e_wknd_dlr,1,0.1,rub,True
+BBG000N625H8,FRHC,stock,Freedom Holding Corp/NV,unknown,1,0.01,usd,True
+BBG0027F0Y27,CNTLP,stock,Центральный Телеграф - акции привилегированные,moex_mrng_evng_e_wknd_dlr,100,0.02,rub,True
+TCS007940839,KZIZP,stock,Красногорский завод им. С.А. Зверева - привилегированные акции,otc_ncc,1,0.01,rub,True
+TCS10A0JR514,LIFE,stock,Фармсинтез,moex_mrng_evng_e_wknd_dlr,100,0.005,rub,True
+TCS00A108ZR8,DATA,stock,Группа Аренадата,moex_mrng_evng_e_wknd_dlr,1,0.02,rub,True
+BBG000FWGSZ5,IRKT,stock,Яковлев,moex_mrng_evng_e_wknd_dlr,100,0.02,rub,True
+BBG000RJL816,TTLK,stock,Таттелеком,moex_mrng_evng_e_wknd_dlr,1000,0.0005,rub,True
+TCS00A0ZZAC4,SVCB,stock,Совкомбанк,moex_mrng_evng_e_wknd_dlr,100,0.005,rub,True
+TCS00A107JE2,GEMC,stock,United medical group,moex_mrng_evng_e_wknd_dlr,1,0.1,rub,True
+BBG004S689R0,PHOR,stock,ФосАгро,moex_mrng_evng_e_wknd_dlr,1,1.0,rub,True
+TCS00A106XF2,HNFG,stock,HENDERSON,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+TCS2207L1061,HHRU,stock,HeadHunter Group PLC,unknown,1,1.0,rub,True
+BBG004S68829,TATNP,stock,Татнефть - привилегированные акции,moex_mrng_evng_e_wknd_dlr,1,0.1,rub,True
+BBG004S68507,MAGN,stock,Магнитогорский металлургический комбинат,moex_mrng_evng_e_wknd_dlr,10,0.005,rub,True
+BBG004730ZJ9,VTBR,stock,Банк ВТБ,moex_mrng_evng_e_wknd_dlr,1,0.01,rub,True
+BBG004S686N0,BANEP,stock,Башнефть - привилегированные акции,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG00172J7S9,OKEY,stock,O'Key Group SA,moex_extended,10,0.01,rub,True
+BBG000VG1034,MRKP,stock,Россети Центр и Приволжье,moex_mrng_evng_e_wknd_dlr,10000,0.0001,rub,True
+BBG000R04X57,FLOT,stock,Совкомфлот,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+TCS60A0JQ9P9,SPBE,stock,СПБ Биржа,SPB_RU_MORNING,1,0.1,rub,True
+TCS10A0JNAB6,ABIO,stock,Артген,moex_mrng_evng_e_wknd_dlr,10,0.02,rub,True
+BBG000V07CB8,DVEC,stock,ДЭК,moex_mrng_evng_e_wknd_dlr,1000,0.001,rub,True
+TCS00A107RM8,ZAYM,stock,МФК Займер,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+BBG004S681W1,MTSS,stock,МТС,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+TCS1949E2046,GLTR@GS,stock,Globaltrans Investment PLC,unknown,1,0.01,usd,True
+TCS00A109B25,OZPH,stock,Озон Фармацевтика,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+BBG00475JZZ6,FEES,stock,ФСК Россети,moex_mrng_evng_e_wknd_dlr,10000,2e-05,rub,True
+TCS00A0HG6Z8,OBNE,stock,Обьнефтегазгеология - ао,otc_ncc,1,0.01,rub,True
+BBG000MZL0Y6,PMSB,stock,Пермэнергосбыт,moex_mrng_evng_e_wknd_dlr,10,0.1,rub,True
+TCS10A0JR6A6,RBCM,stock,РБК,moex_mrng_evng_e_wknd_dlr,100,0.005,rub,True
+BBG004S687G6,MSRS,stock,Россети Московский регион,moex_mrng_evng_e_wknd_dlr,1000,0.0005,rub,True
+BBG004S68473,IRAO,stock,Интер РАО ЕЭС,moex_mrng_evng_e_wknd_dlr,100,0.0005,rub,True
+BBG002BCQK67,NSVZ,stock,Наука-Связь,moex_mrng_evng_e_wknd_dlr,10,0.5,rub,True
+TCS20A0J2QG8,BLNG,stock,Белон,moex_mrng_evng_e_wknd_dlr,100,0.01,rub,True
+TCS03A108X38,X5,stock,Корпоративный Центр Икс 5,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG00475KKY8,NVTK,stock,НОВАТЭК,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+BBG002YFXL29,UNKL,stock,ЮУНК,moex_mrng_evng_e_wknd_dlr,1,10.0,rub,True
+BBG000W325F7,AQUA,stock,ИНАРКТИКА,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG004Z2RGW8,ROLO,stock,Русолово,moex_mrng_evng_e_wknd_dlr,1000,0.0002,rub,True
+BBG000RK52V1,OGKB,stock,Вторая генерирующая компания оптового рынка электроэнергии,moex_mrng_evng_e_wknd_dlr,1000,0.0001,rub,True
+BBG009GSYN76,CBOM,stock,МКБ,moex_mrng_evng_e_wknd_dlr,100,0.001,rub,True
+BBG002W2FT69,ABRD,stock,АбрауДюрсо,moex_mrng_evng_e_wknd_dlr,10,0.2,rub,True
+BBG004TC84Z8,TRMK,stock,Трубная Металлургическая Компания,moex_mrng_evng_e_wknd_dlr,10,0.02,rub,True
+TCS00A0ZZBC2,SOFL,stock,Софтлайн,moex_mrng_evng_e_wknd_dlr,10,0.02,rub,True
+BBG002B2J5X0,KRKNP,stock,Саратовский НПЗ - акции привилегированные,moex_mrng_evng_e_wknd_dlr,1,20.0,rub,True
+BBG00475K6C3,CHMF,stock,Северсталь,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+BBG000GQSVC2,NKNCP,stock,Нижнекамскнефтехим (привилегированные),moex_mrng_evng_e_wknd_dlr,10,0.02,rub,True
+TCS00A0HG602,OBNEP,stock,Обьнефтегазгеология - привилегированные акции,otc_ncc,1,0.01,rub,True
+TCS4387E2054,FIVE@GS,stock,X5 RetailGroup ГДР,unknown,1,0.01,usd,True
+BBG004S68C39,LSRG,stock,Группа ЛСР,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+BBG004S685M3,RTKMP,stock,Ростелеком - Привилегированные акции,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+BBG000PZ0833,MGTSP,stock,МГТС - акции привилегированные,moex_mrng_evng_e_wknd_dlr,1,2.0,rub,True
+TCS00A107KX0,KLVZ,stock,Кристалл,moex_mrng_evng_e_wknd_dlr,100,0.002,rub,True
+BBG00R4Z2NT4,VEON-RX,stock,VEON,MOEX,10,0.1,rub,True
+TCS002614686,NTZL,stock,НИТЕЛ,otc_ncc,1,0.01,rub,True
+TCS609805522,YNDX@US,stock,Яндекс,unknown,1,0.01,usd,True
+TCS00A107T19,YDEX,stock,Яндекс,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG004S68758,BANE,stock,Башнефть,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+BBG004S683W7,AFLT,stock,Аэрофлот,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+TCS50A102093,ELMT,stock,Элемент,SPB_RU_MORNING,1000,5e-05,rub,True
+BBG004S68CP5,MVID,stock,М.Видео,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+BBG000MZL2S9,PMSBP,stock,Пермэнергосбыт - акции привилегированные,moex_mrng_evng_e_wknd_dlr,10,0.2,rub,True
+BBG004S68DD6,MSTT,stock,Мостотрест,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+BBG004S68598,MTLR,stock,Мечел,moex_mrng_evng_e_wknd_dlr,1,0.01,rub,True
+TCS00A108GD8,IVAT,stock,IVA Technologies,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+BBG004S688G4,AKRN,stock,Акрон,moex_mrng_evng_e_wknd_dlr,1,2.0,rub,True
+TCS00Y3XYV94,MDMG,stock,Мать и дитя,moex_mrng_evng_e_wknd_dlr,1,0.1,rub,True
+BBG0047315Y7,SBERP,stock,Сбер Банк - привилегированные акции,moex_mrng_evng_e_wknd_dlr,1,0.01,rub,True
+BBG0063FKTD9,LENT,stock,Лента,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+RU000A106T36,ASTR,stock,Группа Астра,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+BBG000LWNRP3,RKKE,stock,РКК Энергия им.С.П.Королева,moex_mrng_evng_e_wknd_dlr,1,10.0,rub,True
+BBG000VH7TZ8,MRKC,stock,Россети Центр,moex_mrng_evng_e_wknd_dlr,1000,0.0002,rub,True
+BBG002B9MYC1,KAZT,stock,КуйбышевАзот,moex_mrng_evng_e_wknd_dlr,10,0.2,rub,True
+BBG002B298N6,YAKG,stock,ЯТЭК,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+BBG000Q7GG57,TGKB,stock,ТГК-2,moex_mrng_evng_e_wknd_dlr,1000000,5e-06,rub,True
+BBG00F9XX7H4,RNFT,stock,РуссНефть,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+BBG005D1WCQ1,QIWI,stock,QIWI,MOEX_DEALER_WEEKEND,1,0.2,rub,True
+TCS03A0ZYD22,GTRK,stock,ГТМ,moex_mrng_evng_e_wknd_dlr,10,0.1,rub,True
+BBG004S681B4,NLMK,stock,НЛМК,moex_mrng_evng_e_wknd_dlr,10,0.02,rub,True
+BBG000TY1CD1,BELU,stock,Novabev Group,moex_mrng_evng_e_wknd_dlr,1,0.2,rub,True
+BBG000QF1Q17,FESH,stock,ДВМП,moex_mrng_evng_e_wknd_dlr,10,0.01,rub,True
+BBG0100R9963,SGZH,stock,Сегежа,moex_mrng_evng_e_wknd_dlr,100,0.001,rub,True
+BBG000NLCCM3,LSNGP,stock,Россети Ленэнерго - акции привилегированные,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+BBG000VJMH65,MRKS,stock,Россети Сибирь,moex_mrng_evng_e_wknd_dlr,1000,0.0005,rub,True
+BBG004731032,LKOH,stock,ЛУКОЙЛ,moex_mrng_evng_e_wknd_dlr,1,0.5,rub,True
+TCS00A107J11,DELI,stock,Делимобиль,moex_mrng_evng_e_wknd_dlr,1,0.05,rub,True
+TCS00A0JVJQ8,MGKL,stock,МГКЛ,moex_mrng_evng_e_wknd_dlr,100,0.0005,rub,True
+TCS009046502,UDMN,stock,Удмуртнефть,otc_ncc,1,0.01,rub,True
+BBG004S68BR5,NMTP,stock,НМТП,moex_mrng_evng_e_wknd_dlr,100,0.005,rub,True
+BBG000QFH687,TGKA,stock,ТГК-1,moex_mrng_evng_e_wknd_dlr,100000,2e-06,rub,True
+BBG004S68FR6,MTLRP,stock,Мечел - Привилегированные акции,moex_mrng_evng_e_wknd_dlr,10,0.05,rub,True
+BBG000C7P5M7,MRKY,stock,Россети Юг,moex_mrng_evng_e_wknd_dlr,10000,5e-05,rub,True
+TCS10A10A0J4,JETL,stock,Джетленд Холдинг,LSE_MORNING,1,0.01,rub,True
+FUTWHEAT0826,W4Q6,futures,WHEAT-8.26 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTGOLD12250,GDZ5,futures,GOLD-12.25 Золото,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTEM1225000,EMZ5,futures,EM-12.25 Развивающиеся рынки,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTCBOM12250,CMZ5,futures,CBOM-12.25 МКБ,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTBYN032600,BYH6,futures,BYN-3.26 Белорусский рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.01,rub,True
+FUTASTR12250,ASZ5,futures,ASTR-12.25 Группа Астра,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTX51225000,X5Z5,futures,X5-12.25 Корп. центр ИКС 5,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTCNI122500,CSZ5,futures,CNI-12.25 Индекс Потребительского сектора,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTCOFFE1125,KCX5,futures,COFFEE-11.25 Кофе,forts_futures_weekend,"Quotation(units=10, nano=0)",0.001,rub,True
+FUTUCNY06260,UCM6,futures,UCNY-6.26 Курс доллар США - Юань,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTTRNF12250,TNZ5,futures,TRNF-12.25 Транснефть (привилегированные),forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTCNY092600,CRU6,futures,CNY-9.26 Курс Юань – Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTFLOT12250,FLZ5,futures,FLOT-12.25 Совкомфлот,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSOXQ03260,SQH6,futures,SOXQ-3.26 Nasdaq PHLX Semiconductor Sector Index,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTMIX092700,MXU7,futures,MIX-9.27 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTWHEAT0726,W4N6,futures,WHEAT-7.26 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTBR0226000,BRG6,futures,BR-2.26 Нефть Brent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTFEES12250,FSZ5,futures,FEES-12.25 ФСК Россети,forts_futures_weekend,"Quotation(units=100000, nano=0)",1.0,rub,True
+FUTRTKM12250,RTZ5,futures,RTKM-12.25 Ростелеком,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTEU1225000,EuZ5,futures,Eu-12.25 Курс евро - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTHOME03260,HOH6,futures,HOME-3.26 Индекс московской недвижимости,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTPLZLM1225,PXZ5,futures,PLZLM-12.25 Полюс Золото,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTUPRO03260,UNH6,futures,UPRO-3.26 Юнипро,forts_futures_weekend,"Quotation(units=10000, nano=0)",1.0,rub,True
+FUTEU0626000,EuM6,futures,Eu-6.26 Курс евро - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTMIX092600,MXU6,futures,MIX-9.26 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTT12250000,TBZ5,futures,T-12.25 Т-Технологии,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTTRY062600,TYM6,futures,TRY-6.26 Курс Турецкая лира - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTYDEX12250,YDZ5,futures,YDEX-12.25 Яндекс,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTMIX032600,MXH6,futures,MIX-3.26 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTINDIA1225,NDZ5,futures,INDIA-12.25 MSCI India Index,forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTSIBN12250,SOZ5,futures,SIBN-12.25 Газпром нефть,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTSMLT12250,SSZ5,futures,SMLT-12.25 Самолет,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTBANE12250,BNZ5,futures,BANE-12.25 Башнефть,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTMMI122500,MAZ5,futures,MMI-12.25 Индекс металлов и добычи,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTSi0627000,SiM7,futures,Si-6.27 Курс доллар - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTAMD032600,ARH6,futures,AMD-3.26 Курс Армянский драм - Рубль,FORTS_EVENING,"Quotation(units=100000, nano=0)",0.001,rub,True
+FUTRVI122500,VIZ5,futures,RVI-12.25 Волатильность российского рынка,forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTTRNF03260,TNH6,futures,TRNF-3.26 Транснефть (привилегированные),forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTUPRO12250,UNZ5,futures,UPRO-12.25 Юнипро,forts_futures_weekend,"Quotation(units=10000, nano=0)",1.0,rub,True
+FUTCOCOA0326,CCH6,futures,COCOA-3.26 Какао,forts_futures_weekend,"Quotation(units=10, nano=0)",0.1,rub,True
+FUTNG0326000,NGH6,futures,NG-3.26 Природный газ,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTWHEAT0926,W4U6,futures,WHEAT-9.26 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTSPBE12250,SEZ5,futures,SPBE-12.25 СПБ Биржа,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTTLT032600,TLH6,futures,TLT-3.26 Индекс казначейских облигаций США,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTPLT032600,PTH6,futures,PLT-3.26 Платина,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTRTSM03260,RMH6,futures,RTSM-3.26 Индекс РТС (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.5,rub,True
+FUTROSN03260,RNH6,futures,ROSN-3.26 Роснефть,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTBRM052600,BMK6,futures,BRM-5.26 Нефть Brent (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTCNI032600,CSH6,futures,CNI-3.26 Индекс Потребительского сектора,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTMOEX03260,MEH6,futures,MOEX-3.26 Московская Биржа,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTAFLT03260,AFH6,futures,AFLT-3.26 Аэрофлот,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTALIBA0326,BBH6,futures,ALIBABA-3.26 Alibaba,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTSMLT03260,SSH6,futures,SMLT-3.26 Самолет,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTBR0426000,BRJ6,futures,BR-4.26 Нефть Brent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTMTLR12250,MCZ5,futures,MTLR-12.25 Мечел,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTKZT032600,KZH6,futures,KZT-3.26 Курс Казахстанский Тенге - Рубль,FORTS_EVENING,"Quotation(units=100000, nano=0)",0.001,rub,True
+FUTMXI122700,MMZ7,futures,MXI-12.27 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTMOEXC0626,MYM6,futures,MOEXCNY-6.26 Индекс МосБиржи (в юанях),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTBR1225000,BRZ5,futures,BR-12.25 Нефть Brent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTSOXQ12250,SQZ5,futures,SOXQ-12.25 Nasdaq PHLX Semiconductor Sector Index,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTWHEAT0326,W4H6,futures,WHEAT-3.26 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTSBRF03260,SRH6,futures,SBRF-3.26 Сбер Банк (обыкновенные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSI0926000,SiU6,futures,Si-9.26 курс доллар США - российский рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTRGBI12250,RBZ5,futures,RGBI-12.25 Индекс Государственных облигаций,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTNASD03260,NAH6,futures,NASD-3.26 Nasdaq 100,forts_futures_weekend,"Quotation(units=41, nano=0)",1.0,rub,True
+FUTLKOH12250,LKZ5,futures,LKOH-12.25 Лукойл,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTIRAO03260,IRH6,futures,IRAO-3.26 Интер РАО ЕЭС,forts_futures_weekend,"Quotation(units=10000, nano=0)",1.0,rub,True
+FUTWHEAT0626,W4M6,futures,WHEAT-6.26 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTMTSI12250,MTZ5,futures,MTSI-12.25 МТС,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTAFKS03260,AKH6,futures,AFKS-3.26 АФК Система,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTUCNY09260,UCU6,futures,UCNY-9.26 Курс доллар США - Юань,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTMXI092700,MMU7,futures,MXI-9.27 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTISKJ03260,ISH6,futures,ISKJ-3.26 ИСКЧ,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTGL0326000,GLH6,futures,GL-3.26 Золото (rub),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTSBPR06260,SPM6,futures,SBPR-6.26 Сбер Банк (привилегированные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTWUSH12250,WUZ5,futures,WUSH-12.25 Whoosh,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTRTS092600,RIU6,futures,RTS-9.26 Индекс РТС,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTBAIDU0326,BDH6,futures,BAIDU-3.26 Baidu,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTSILV12250,SVZ5,futures,SILV-12.25 Серебро,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTTTF102500,FFV5,futures,TTF-10.25 Природный газ Датч ТТФ,forts_futures_weekend,"Quotation(units=1, nano=0)",0.005,rub,True
+FUTMXI122600,MMZ6,futures,MXI-12.26 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTSUGAR1025,SuV5,futures,SUGAR-10.25 Сахар российский,forts_futures_weekend,"Quotation(units=100, nano=0)",10.0,rub,True
+FUTMXI032700,MMH7,futures,MXI-3.27 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTED0326000,EDH6,futures,ED-3.26 Курс Евро - Доллар,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTRTS122600,RIZ6,futures,RTS-12.26 Индекс РТС,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTRTS062600,RIM6,futures,RTS-6.26 Индекс РТС,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTHANG03260,HSH6,futures,HANG-3.26 Hang Seng,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTALUM03260,ANH6,futures,ALUM-3.26 Алюминий,forts_futures_weekend,"Quotation(units=100, nano=0)",0.5,rub,True
+FUTMMI032600,MAH6,futures,MMI-3.26 Индекс металлов и добычи,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTEU0326000,EuH6,futures,Eu-3.26 Курс евро - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTNASD06260,NAM6,futures,NASD-6.26 Nasdaq 100,forts_futures_weekend,"Quotation(units=41, nano=0)",1.0,rub,True
+FUTRNFT12250,RUZ5,futures,RNFT-12.25 РуссНефть,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTGMKN12250,GKZ5,futures,GMKN-12.25 Норильский никель,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTETHA03260,ETH6,futures,ETHA-3.26 Ethereum ETF,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTBYN122500,BYZ5,futures,BYN-12.25 Белорусский рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.01,rub,True
+FUTGAZR06260,GZM6,futures,GAZR-6.26 Газпром,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTWHEAT0426,W4J6,futures,WHEAT-4.26 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTFESH03260,FEH6,futures,FESH-3.26 ДВМП,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSBRF12250,SRZ5,futures,SBRF-12.25 Сбер Банк (обыкновенные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTLKOH03260,LKH6,futures,LKOH-3.26 Лукойл,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTVKCO03260,VKH6,futures,VKCO-3.26 ВК,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTINR062600,I2M6,futures,INR-6.26 Индийская рупия - Рубль,FORTS_EVENING,"Quotation(units=10000, nano=0)",0.0001,rub,True
+FUTT03260000,TBH6,futures,T-3.26 Т-Технологии,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTNGM102500,NRV5,futures,NGM-10.25 Природный газ (микро),forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTAUDU12250,AUZ5,futures,AUDU-12.25 Курс Австралийский доллар - Доллар США,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTRTKM03260,RTH6,futures,RTKM-3.26 Ростелеком,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTNG1225000,NGZ5,futures,NG-12.25 Природный газ,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTSILV06260,SVM6,futures,SILV-6.26 Серебро,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTROSN06260,RNM6,futures,ROSN-6.26 Роснефть,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTLEAS12250,LEZ5,futures,LEAS-12.25 Европлан,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTGAZR12250,GZZ5,futures,GAZR-12.25 Газпром,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSOFL12250,S0Z5,futures,SOFL-12.25 Софтлайн,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTCNY032600,CRH6,futures,CNY-3.26 Курс Юань - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTEu0926000,EuU6,futures,Eu-9.26 Курс евро - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTBRM012600,BMF6,futures,BRM-1.26 Нефть Brent (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTCNY062600,CRM6,futures,CNY-6.26 Курс Юань - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTBAIDU1225,BDZ5,futures,BAIDU-12.25 Baidu,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTBR0326000,BRH6,futures,BR-3.26 Нефть Brent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTPLD032600,PDH6,futures,PLD-3.26 Палладий,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTZINC12250,ZCZ5,futures,ZINC-12.25 Цинк,forts_futures_weekend,"Quotation(units=100, nano=0)",0.5,rub,True
+FUTTRY122500,TYZ5,futures,TRY-12.25 Курс Турецкая лира - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTFEES03260,FSH6,futures,FEES-3.26 ФСК Россети,forts_futures_weekend,"Quotation(units=100000, nano=0)",1.0,rub,True
+FUTWHEAT1125,W4X5,futures,WHEAT-11.25 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTCOCOA1225,CCZ5,futures,COCOA-12.25 Какао,forts_futures_weekend,"Quotation(units=10, nano=0)",0.1,rub,True
+FUTINR122500,I2Z5,futures,INR-12.25 Курс Индийская рупия - Рубль,FORTS_EVENING,"Quotation(units=10000, nano=0)",0.0001,rub,True
+FUTKMAZ12250,KMZ5,futures,KMAZ-12.25 КАМАЗ,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTDJ3003260,DJH6,futures,DJ30-3.26 Dow Jones 30,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTPHOR03260,PHH6,futures,PHOR-3.26 ФосАгро,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTAMD062600,ARM6,futures,AMD-6.26 Курс Армянский драм - Рубль,FORTS_EVENING,"Quotation(units=100000, nano=0)",0.001,rub,True
+FUTRTS032600,RIH6,futures,RTS-3.26 Индекс РТС,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTROSN09260,RNU6,futures,ROSN-9.26 Роснефть,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTOGI032600,OGH6,futures,OGI-3.26 Индекс нефти и газа,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTNLMK12250,NMZ5,futures,NLMK-12.25 НЛМК,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTMTLR03260,MCH6,futures,MTLR-3.26 Мечел,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTALRS03260,ALH6,futures,ALRS-3.26 АЛРОСА,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTINDIA0326,NDH6,futures,INDIA-3.26 MSCI India Index,forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTRGBI06260,RBM6,futures,RGBI-6.26 Индекс Государственных облигаций,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTRASP03260,RAH6,futures,RASP-3.26 Распадская,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTRVI102500,VIV5,futures,RVI-10.25 Волатильность российского рынка,forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTSUGAR1125,SuX5,futures,SUGAR-11.25 Сахар российский,forts_futures_weekend,"Quotation(units=100, nano=0)",10.0,rub,True
+FUTSPYF03260,SFH6,futures,SPYF-3.26 инвестиционные паи SPY ETF Trust,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTUCAD12250,CAZ5,futures,UCAD-12.25 Курс доллар США - Канадский доллар,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTSILV09260,SVU6,futures,SILV-9.26 Серебро,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTGL0626000,GLM6,futures,GL-6.26 Золото (rub),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTSPYF06260,SFM6,futures,SPYF-6.26 инвестиционные паи SPY ETF Trust,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTXIA122500,XIZ5,futures,XIA-12.25 Xiaomi,forts_futures_weekend,"Quotation(units=100, nano=0)",0.01,rub,True
+FUTCNYRUBF00,CNYRUBF,futures,CNYRUBF Юань - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTBSPB03260,BSH6,futures,BSPB-3.26 Банк Санкт-Петербург,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTMVID12250,MVZ5,futures,MVID-12.25 М.видео,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTALRS12250,ALZ5,futures,ALRS-12.25 АЛРОСА,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSI1225000,SiZ5,futures,Si-12.25 Курс доллар - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTBR0526000,BRK6,futures,BR-5.26 Нефть Brent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTR20001225,R2Z5,futures,R2000-12.25 Russell 2000,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTSNGR12250,SNZ5,futures,SNGR-12.25 Сургутнефтегаз,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTGBPU12250,GUZ5,futures,GBPU-12.25 Курс Фунт стерлингов-Доллар США,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTVTBR03260,VBH6,futures,VTBR-3.26 ВТБ,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTBRM122500,BMZ5,futures,BRM-12.25 Нефть Brent (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTMAGN12250,MGZ5,futures,MAGN-12.25 ММК,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTSVCB03260,SCH6,futures,SVCB-3.26 Совкомбанк,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTWHEAT0126,W4F6,futures,WHEAT-1.26 Индекс пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTAFKS12250,AKZ5,futures,AFKS-12.25 АФК Система,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTRTS062700,RIM7,futures,RTS-6.27 Индекс РТС,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTRENI12250,RDZ5,futures,RENI-12.25 Ренессанс Страхование,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTNIKK03260,N2H6,futures,NIKK-3.26 Nikkei 225,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTWHEAT1025,W4V5,futures,WHEAT-10.25 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTORANG1125,OJX5,futures,ORANGE-11.25 Апельсиновый сок,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTTTF112500,FFX5,futures,TTF-11.25 Природный газ Датч ТТФ,forts_futures_weekend,"Quotation(units=1, nano=0)",0.005,rub,True
+FUTFNI122500,FNZ5,futures,FNI-12.25 Индекс Финансов,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTGOLD09260,GDU6,futures,GOLD-9.26 Золото,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTMOEXC0326,MYH6,futures,MOEXCNY-3.26 Индекс МосБиржи (в юанях),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTXIA032600,XIH6,futures,XIA-3.26 Xiaomi,forts_futures_weekend,"Quotation(units=100, nano=0)",0.01,rub,True
+FUTTATP12250,TPZ5,futures,TATP-12.25 Татнефть (привилегированные),forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTPHOR12250,PHZ5,futures,PHOR-12.25 ФосАгро,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTPIKK12250,PIZ5,futures,PIKK-12.25 ПИК,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTNGM012600,NRF6,futures,NGM-1.26 Природный газ (микро),forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTBELUG0326,NBH6,futures,BELUGA-3.26 НоваБев Групп,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTYDEX03260,YDH6,futures,YDEX-3.26 Яндекс,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTGOLD03260,GDH6,futures,GOLD-3.26 Золото,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTUCAD03260,CAH6,futures,UCAD-3.26 Курс доллар США - Канадский доллар,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTPOSI03260,PSH6,futures,POSI-3.26 Positive Technologies,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTSUGAR1225,SuZ5,futures,SUGAR-12.25 Сахар российский,forts_futures_weekend,"Quotation(units=100, nano=0)",10.0,rub,True
+FUTISKJ12250,ISZ5,futures,ISKJ-12.25 ИСКЧ,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTSGZH12250,SZZ5,futures,SGZH-12.25 Сегежа,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTRTS032700,RIH7,futures,RTS-3.27 Индекс РТС,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTNG0226000,NGG6,futures,NG-2.26 Природный газ,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTALUM12250,ANZ5,futures,ALUM-12.25 Алюминий,forts_futures_weekend,"Quotation(units=100, nano=0)",0.5,rub,True
+FUTPLD092600,PDU6,futures,PLD-9.26 Палладий,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTNOTK12250,NKZ5,futures,NOTK-12.25 НОВАТЭК,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTNIKK12250,N2Z5,futures,NIKK-12.25 Nikkei 225,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTIMOEXF000,IMOEXF,futures,IMOEXF Индекс МосБиржи,forts_futures_weekend,"Quotation(units=10, nano=0)",0.5,rub,True
+FUTETHA12250,ETZ5,futures,ETHA-12.25 Ethereum ETF,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTMXI032600,MMH6,futures,MXI-3.26 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTBELUG1225,NBZ5,futures,BELUGA-12.25 НоваБев Групп,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTGAZPF0000,GAZPF,futures,GAZPF Газпром,forts_futures_weekend,"Quotation(units=100, nano=0)",0.01,rub,True
+FUTRNFT03260,RUH6,futures,RNFT-3.26 РуссНефть,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTUCHF03260,CFH6,futures,UCHF-3.26 Курс доллар США - Швейцарский франк,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTMXI062700,MMM7,futures,MXI-6.27 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTMAGN03260,MGH6,futures,MAGN-3.26 ММК,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTIPO032600,IPH6,futures,IPO-3.26 Индекс IPO,forts_futures_weekend,"Quotation(units=1, nano=0)",0.5,rub,True
+FUTPOSI12250,PSZ5,futures,POSI-12.25 Positive Technologies,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTUSDRUBF00,USDRUBF,futures,USDRUBF Доллар - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.01,rub,True
+FUTTENCE0326,TCH6,futures,TENCENT-3.26 Tencent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.1,rub,True
+FUTNG0426000,NGJ6,futures,NG-4.26 Природный газ,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTHYDR12250,HYZ5,futures,HYDR-12.25 РусГидро,forts_futures_weekend,"Quotation(units=10000, nano=0)",1.0,rub,True
+FUTSBRF06260,SRM6,futures,SBRF-6.26 Сбер Банк (обыкновенные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTRUAL03260,RLH6,futures,RUAL-3.26 РУСАЛ,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTKMAZ03260,KMH6,futures,KMAZ-3.26 КАМАЗ,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTTATP03260,TPH6,futures,TATP-3.26 Татнефть (привилегированные),forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTWUSH03260,WUH6,futures,WUSH-3.26 Whoosh,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTLKOH09260,LKU6,futures,LKOH-9.26 Лукойл,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTSBPR09260,SPU6,futures,SBPR-9.26 Сбер Банк (привилегированные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTMIX062700,MXM7,futures,MIX-6.27 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTDAX122500,DXZ5,futures,DAX-12.25 DAX 40,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTBSPB12250,BSZ5,futures,BSPB-12.25 Банк Санкт-Петербург,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTDJ3012250,DJZ5,futures,DJ30-12.25 Dow Jones 30,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTGL1225000,GLZ5,futures,GL-12.25 Золото (rub),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTBR1125000,BRX5,futures,BR-11.25 Нефть Brent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTBRM112500,BMX5,futures,BRM-11.25 Нефть Brent (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTAMD122500,ARZ5,futures,AMD-12.25 Курс Армянский драм - Рубль,FORTS_EVENING,"Quotation(units=100000, nano=0)",0.001,rub,True
+FUTGLDRUBF00,GLDRUBF,futures,GLDRUBF Золото (rub),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTROSN12250,RNZ5,futures,ROSN-12.25 Роснефть,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTRUAL12250,RLZ5,futures,RUAL-12.25 РУСАЛ,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTCHMF03260,CHH6,futures,CHMF-3.26 Северсталь,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSNGR03260,SNH6,futures,SNGR-3.26 Сургутнефтегаз,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTCOFFE0226,KCG6,futures,COFFEE-2.26 Кофе,forts_futures_weekend,"Quotation(units=10, nano=0)",0.001,rub,True
+FUTMGNT03260,MNH6,futures,MGNT-3.26 Магнит,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTWHEAT0526,W4K6,futures,WHEAT-5.26 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTNASD09260,NAU6,futures,NASD-9.26 Nasdaq 100,forts_futures_weekend,"Quotation(units=41, nano=0)",1.0,rub,True
+FUTRENI03260,RDH6,futures,RENI-3.26 Ренессанс Страхование,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSUGR03260,SAH6,futures,SUGR-3.26 Сахар мировой,forts_futures_weekend,"Quotation(units=1016, nano=0)",0.01,rub,True
+FUTIBIT12250,IBZ5,futures,IBIT-12.25 Bitcoin ETF,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTAUDU03260,AUH6,futures,AUDU-3.26 Курс Австралийский доллар - Доллар США,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTUCNY12250,UCZ5,futures,UCNY-12.25 Курс доллар США - Юань,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTZINC03260,ZCH6,futures,ZINC-3.26 Цинк,forts_futures_weekend,"Quotation(units=100, nano=0)",0.5,rub,True
+FUTDAX032600,DXH6,futures,DAX-3.26 DAX 40,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSVCB12250,SCZ5,futures,SVCB-12.25 Совкомбанк,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTCNY122500,CRZ5,futures,CNY-12.25 Курс Юань - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTCNY122600,CRZ6,futures,CNY-12.26 Курс Юань – Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTNG1125000,NGX5,futures,NG-11.25 Природный газ,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTNGM032600,NRH6,futures,NGM-3.26 Природный газ (микро),forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTHKD032600,HKH6,futures,HKD-3.26 Курс Гонконгский доллар - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTRASP12250,RAZ5,futures,RASP-12.25 Распадская,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTNGM022600,NRG6,futures,NGM-2.26 Природный газ (микро),forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTSBERF0000,SBERF,futures,SBERF Сбер Банк (обыкновенные),forts_futures_weekend,"Quotation(units=100, nano=0)",0.01,rub,True
+FUTNGM112500,NRX5,futures,NGM-11.25 Природный газ (микро),forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTHKD062600,HKM6,futures,HKD-6.26 Курс Гонконгский доллар - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTEu1226000,EuZ6,futures,Eu-12.26 Курс евро - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTMTSI03260,MTH6,futures,MTSI-3.26 МТС,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTUCHF12250,CFZ5,futures,UCHF-12.25 Курс доллар США - Швейцарский франк,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTHEAD12250,HDZ5,futures,HEAD-12.25 Хэдхантер,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTTENCE1225,TCZ5,futures,TENCENT-12.25 Tencent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.1,rub,True
+FUTRTS122500,RIZ5,futures,RTS-12.25 Индекс РТС,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTCNY032700,CRH7,futures,CNY-3.27 Курс Юань – Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTOGI122500,OGZ5,futures,OGI-12.25 Индекс нефти и газа,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTMIX062600,MXM6,futures,MIX-6.26 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTGAZR09260,GZU6,futures,GAZR-9.26 Газпром,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTR20000326,R2H6,futures,R2000-3.26 Russell 2000,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTKZT122500,KZZ5,futures,KZT-12.25 Курс Казахстанский Тенге - Рубль,FORTS_EVENING,"Quotation(units=100000, nano=0)",0.001,rub,True
+FUTKZT062600,KZM6,futures,KZT-6.26 Курс Казахстанский Тенге - Рубль,FORTS_EVENING,"Quotation(units=100000, nano=0)",0.001,rub,True
+FUTWHEAT0226,W4G6,futures,WHEAT-2.26 Индекс пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTPLD062600,PDM6,futures,PLD-6.26 Палладий,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTNGM042600,NRJ6,futures,NGM-4.26 Природный газ (микро),forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTAED122500,AEZ5,futures,AED-12.25 Курс Дирхам ОАЭ - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTMDMG03260,MDH6,futures,MDMG-3.26 Мать и дитя,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTBRM042600,BMJ6,futures,BRM-4.26 Нефть Brent (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTSOFL03260,S0H6,futures,SOFL-3.26 Софтлайн,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTSBRF09260,SRU6,futures,SBRF-9.26 Сбер Банк (обыкновенные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTCOPPE1225,CEZ5,futures,COPPER-12.25 Медь,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTSIBN03260,SOH6,futures,SIBN-3.26 Газпром нефть,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTGMKN03260,GKH6,futures,GMKN-3.26 Норильский никель,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTHKD122500,HKZ5,futures,HKD-12.25 Курс Гонконгский доллар - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTNGM122500,NRZ5,futures,NGM-12.25 Природный газ (микро),forts_futures_weekend,"Quotation(units=1, nano=0)",0.001,rub,True
+FUTSBPR03260,SPH6,futures,SBPR-3.26 Сбер Банк (привилегированные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTUJPY03260,JPH6,futures,UJPY-3.26 Курс доллар США - Японская йена,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.01,rub,True
+FUTLKOH06260,LKM6,futures,LKOH-6.26 Лукойл,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTFESH12250,FEZ5,futures,FESH-12.25 ДВМП,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTPLD122500,PDZ5,futures,PLD-12.25 Палладий,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTUCNY03260,UCH6,futures,UCNY-3.26 Курс доллар США - Юань,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTBRM022600,BMG6,futures,BRM-2.26 Нефть Brent (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTGOLD06260,GDM6,futures,GOLD-6.26 Золото,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTSI0326000,SiH6,futures,Si-3.26 Курс доллар - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTWHEAT1225,W4Z5,futures,WHEAT-12.25 Индекс Пшеницы,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTBR0126000,BRF6,futures,BR-1.26 Нефть Brent,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTAFLT12250,AFZ5,futures,AFLT-12.25 Аэрофлот,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTHANG12250,HSZ5,futures,HANG-12.25 Hang Seng,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTMY1225000,MYZ5,futures,MOEXCNY-12.25 Индекс МосБиржи (в юанях),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTRTSM06260,RMM6,futures,RTSM-6.26 Индекс РТС (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.5,rub,True
+FUTNG1025000,NGV5,futures,NG-10.25 Природный газ,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTIBIT03260,IBH6,futures,IBIT-3.26 Bitcoin ETF,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTSI1226000,SiZ6,futures,Si-12.26 курс доллар США - российский рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTNASD12250,NAZ5,futures,NASD-12.25 Nasdaq 100,forts_futures_weekend,"Quotation(units=41, nano=0)",1.0,rub,True
+FUTNICKE0326,NCH6,futures,NICKEL-3.26 Никель,forts_futures_weekend,"Quotation(units=10, nano=0)",5.0,rub,True
+FUTALIBA1225,BBZ5,futures,ALIBABA-12.25 Alibaba,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTHYDR03260,HYH6,futures,HYDR-3.26 РусГидро,forts_futures_weekend,"Quotation(units=10000, nano=0)",1.0,rub,True
+FUTMXI062600,MMM6,futures,MXI-6.26 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTPLT062600,PTM6,futures,PLT-6.26 Платина,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTMIX032700,MXH7,futures,MIX-3.27 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTBRM032600,BMH6,futures,BRM-3.26 Нефть Brent (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTSFIN12250,SHZ5,futures,SFIN-12.25 ЭсЭфАй,forts_futures_weekend,"Quotation(units=1, nano=0)",0.2,rub,True
+FUTEURRUBF00,EURRUBF,futures,EURRUBF Евро - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.01,rub,True
+FUTMIX122500,MXZ5,futures,MIX-12.25 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTEM0326000,EMH6,futures,EM-3.26 Развивающиеся рынки,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTED1225000,EDZ5,futures,ED-12.25 Курс евро - доллар,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTTRY032600,TYH6,futures,TRY-3.26 Курс Турецкая лира - Рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTAED032600,AEH6,futures,AED-3.26 курс дирхам ОАЭ–российский рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTCHMF12250,CHZ5,futures,CHMF-12.25 Северсталь,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTINR032600,I2H6,futures,INR-3.26 Курс Индийская рупия - Рубль,FORTS_EVENING,"Quotation(units=10000, nano=0)",0.0001,rub,True
+FUTED0626000,EDM6,futures,ED-6.26 Курс Евро - Доллар,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTSTOX12250,SXZ5,futures,STOX-12.25 EURO STOXX 50,forts_futures_weekend,"Quotation(units=100, nano=0)",0.1,rub,True
+FUTFLOT03260,FLH6,futures,FLOT-3.26 Совкомфлот,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSI0626000,SiM6,futures,Si-6.26 Курс доллар - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTNICKE1225,NCZ5,futures,NICKEL-12.25 Никель,forts_futures_weekend,"Quotation(units=10, nano=0)",5.0,rub,True
+FUTTLT122500,TLZ5,futures,TLT-12.25 Индекс казначейских облигаций США,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTPLZLM0326,PXH6,futures,PLZLM-3.26 Полюс Золото,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTLEAS03260,LEH6,futures,LEAS-3.26 Европлан,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTRGBI03260,RBH6,futures,RGBI-3.26 Индекс Государственных облигаций,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTRGBI09260,RBU6,futures,RGBI-9.26 Индекс Государственных облигаций,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTSFIN03260,SHH6,futures,SFIN-3.26 ЭсЭфАй,forts_futures_weekend,"Quotation(units=1, nano=0)",0.2,rub,True
+FUTSNGP12250,SGZ5,futures,SNGP-12.25 Сургутнефтегаз (привилегированные),forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTTATN03260,TTH6,futures,TATN-3.26 Татнефть,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSGZH03260,SZH6,futures,SGZH-3.26 Сегежа,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTNG0126000,NGF6,futures,NG-1.26 Природный газ,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTSNGP03260,SGH6,futures,SNGP-3.26 Сургутнефтегаз (привилегированные),forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTSi0327000,SiH7,futures,Si-3.27 Курс доллар - рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTORANG0126,OJF6,futures,ORANGE-1.26 Апельсиновый сок,forts_futures_weekend,"Quotation(units=100, nano=0)",0.001,rub,True
+FUTNLMK03260,NMH6,futures,NLMK-3.26 НЛМК,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTGBPU03260,GUH6,futures,GBPU-3.26 Курс Фунт стерлингов-Доллар США,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTBANE03260,BNH6,futures,BANE-3.26 Башнефть,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTRTSM12250,RMZ5,futures,RTSM-12.25 Индекс РТС (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.5,rub,True
+FUTSTOX03260,SXH6,futures,STOX-3.26 EURO STOXX 50,forts_futures_weekend,"Quotation(units=100, nano=0)",0.1,rub,True
+FUTMOEX12250,MEZ5,futures,MOEX-12.25 Московская Биржа,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTIPO122500,IPZ5,futures,IPO-12.25 Индекс IPO,forts_futures_weekend,"Quotation(units=1, nano=0)",0.5,rub,True
+FUTFNI032600,FNH6,futures,FNI-3.26 Индекс Финансов,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTSPYF09260,SFU6,futures,SPYF-9.26 инвестиционные паи SPY ETF Trust,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTMIX122600,MXZ6,futures,MIX-12.26 Индекс МосБиржи,forts_futures_weekend,"Quotation(units=1, nano=0)",25.0,rub,True
+FUTHOME12250,HOZ5,futures,HOME-12.25 Индекс московской недвижимости,forts_futures_weekend,"Quotation(units=1, nano=0)",10.0,rub,True
+FUTIRAO12250,IRZ5,futures,IRAO-12.25 Интер РАО ЕЭС,forts_futures_weekend,"Quotation(units=10000, nano=0)",1.0,rub,True
+FUTSILV03260,SVH6,futures,SILV-3.26 Серебро,forts_futures_weekend,"Quotation(units=10, nano=0)",0.01,rub,True
+FUTHEAD03260,HDH6,futures,HEAD-3.26 Хэдхантер,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTSPYF12250,SFZ5,futures,SPYF-12.25 инвестиционные паи SPY ETF Trust,forts_futures_weekend,"Quotation(units=1, nano=0)",0.01,rub,True
+FUTMXI092600,MMU6,futures,MXI-9.26 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTMDMG12250,MDZ5,futures,MDMG-12.25 Мать и дитя,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTCOPPE0326,CEH6,futures,COPPER-3.26 Медь,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTGL0926000,GLU6,futures,GL-9.26 Золото (rub),forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTRVI112500,VIX5,futures,RVI-11.25 Волатильность российского рынка,forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTASTR03260,ASH6,futures,ASTR-3.26 Группа Астра,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTUJPY12250,JPZ5,futures,UJPY-12.25 Курс доллар США - Японская йена,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.01,rub,True
+FUTX50326000,X5H6,futures,X5-3.26 Корп. центр ИКС 5,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTSUGR05260,SAK6,futures,SUGR-5.26 Сахар мировой,forts_futures_weekend,"Quotation(units=1016, nano=0)",0.01,rub,True
+FUTMGNT12250,MNZ5,futures,MGNT-12.25 Магнит,forts_futures_weekend,"Quotation(units=1, nano=0)",1.0,rub,True
+FUTGAZR03260,GZH6,futures,GAZR-3.26 Газпром,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTSBPR12250,SPZ5,futures,SBPR-12.25 Сбер Банк (привилегированные),forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTVKCO12250,VKZ5,futures,VKCO-12.25 ВК,forts_futures_weekend,"Quotation(units=10, nano=0)",1.0,rub,True
+FUTMXI122500,MMZ5,futures,MXI-12.25 Индекс МосБиржи (мини),forts_futures_weekend,"Quotation(units=1, nano=0)",0.05,rub,True
+FUTVTBR12250,VBZ5,futures,VTBR-12.25 ВТБ,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTCBOM03260,CMH6,futures,CBOM-3.26 МКБ,forts_futures_weekend,"Quotation(units=1000, nano=0)",1.0,rub,True
+FUTED0926000,EDU6,futures,ED-9.26 Курс Евро - Доллар,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.0001,rub,True
+FUTPLT092600,PTU6,futures,PLT-9.26 Платина,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTTATN12250,TTZ5,futures,TATN-12.25 Татнефть,forts_futures_weekend,"Quotation(units=100, nano=0)",1.0,rub,True
+FUTPLT122500,PTZ5,futures,PLT-12.25 Платина,forts_futures_weekend,"Quotation(units=1, nano=0)",0.1,rub,True
+FUTAED062600,AEM6,futures,AED-6.26 Курс дирхам ОАЭ – Российский рубль,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.001,rub,True
+FUTUKZT12250,UTZ5,futures,UKZT-12.25 Доллар США - Тенге,FORTS_EVENING,"Quotation(units=1000, nano=0)",0.1,rub,True

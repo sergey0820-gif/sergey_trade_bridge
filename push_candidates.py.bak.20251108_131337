@@ -1,0 +1,404 @@
+from trade_utils.uid_resolver import _resolve_uid
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Автопуш ПОДТВЕРЖДЁННЫХ сигналов в Telegram.
+
+Изменения в этой версии (2025-10-27):
+- Переведено на AsyncClient из tinkoff.invest + добавлены await там, где нужны
+- Аккуратные логи в stdout (видны systemd/journalctl) и короткие print-маркеры
+- Без изменения общей структуры и логики проекта (только совместимость с async)
+
+Правила рассылки:
+- Шлём ТОЛЬКО подтверждённые входы (никаких "watch").
+- Фильтры: TTL (минуты от времени сигнала), макс. отклонение от entry (Δ, %).
+- Разделяем на Public / KI; для KI — без кнопок размещения.
+- Сообщения режутся на чанки <= 4096 символов.
+"""
+
+from __future__ import annotations
+
+import os
+import csv
+import math
+import asyncio
+import datetime as dt
+from dataclasses import dataclass
+from typing import Optional, Tuple, List, Iterable
+
+from dotenv import load_dotenv
+
+# Telegram (PTB 21.x, асинхронно)
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+
+# Tinkoff Invest (async)
+from trade_utils.position_helper import get_instrument_uid
+from tinkoff.invest import AsyncClient, InstrumentIdType
+from tinkoff.invest.schemas import FindInstrumentRequest
+from tinkoff.invest.exceptions import RequestError
+
+# ---------- Конфиг/окружение ----------
+
+load_dotenv(".env")
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
+TINKOFF_TOKEN      = (os.getenv("TINKOFF_TOKEN") or os.getenv("TINKOFF_INVEST_TOKEN") or "").strip()
+ACCOUNT_ID         = (os.getenv("TINKOFF_ACCOUNT_ID") or "").strip()
+
+PUBLIC_CSV = os.getenv("PUBLIC_CSV",  os.path.join("out", "live_candidates_public.csv"))
+KI_CSV     = os.getenv("KI_CSV",      os.path.join("out", "live_candidates_ki.csv"))
+
+# Фильтры свежести/отклонения
+TTL_MINUTES        = int(os.getenv("TTL_MINUTES", "90"))            # сигнал свежий N минут
+MAX_DEVIATION_PCT  = float(os.getenv("MAX_DEVIATION_PCT", "0.5"))   # макс. отклонение от entry, %
+
+# Риск/капитал для подсказки объёма
+RISK_PCT           = float(os.getenv("RISK_PCT", "0.010"))          # 1% на сделку
+CAPITAL            = float(os.getenv("CAPITAL",  "13000"))          # базовый капитал (валюта портфеля)
+
+# Сколько кандидатов максимум шлём за один пуш
+TOP_N              = int(os.getenv("PUSH_TOP_N", "12"))
+
+# ---------- Модели ----------
+
+@dataclass
+class Candidate:
+    ts: dt.datetime
+    ticker: str
+    class_code: str
+    trend_d1: str
+    zone: str
+    rsi_h4: Optional[float]
+    scenario: str
+    recommendation: str
+    entry: float
+    stop: float
+    target: float
+    all_in_bps: Optional[float]
+    cost_r: Optional[float]
+    passed: bool
+
+@dataclass
+class InstrumentInfo:
+    figi: str
+    name: str
+    lot: int
+
+# ---------- Утилиты ----------
+
+def parse_float(x: str) -> Optional[float]:
+    try:
+        if x is None or x == "":
+            return None
+        return float(str(x).replace(",", "."))
+    except Exception:
+        return None
+
+
+def parse_bool(x: str) -> bool:
+    s = str(x).strip().lower()
+    return s in {"1", "true", "yes", "y", "да", "ok", "✓", "✔"}
+
+
+def parse_ts(x: str) -> dt.datetime:
+    # поддержка наиболее частых форматов
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return dt.datetime.strptime(x, fmt)
+        except Exception:
+            pass
+    # если не распарсилось — берём текущий момент (чтобы не заваливать)
+    return dt.datetime.now()
+
+
+def minutes_ago(t: dt.datetime) -> float:
+    return (dt.datetime.now() - t).total_seconds() / 60.0
+
+
+def quotation_to_float(q) -> Optional[float]:
+    if q is None:
+        return None
+    # Quotation: units, nano
+    try:
+        return float(q.units) + float(q.nano) / 1_000_000_000
+    except Exception:
+        return None
+
+
+def chunks_by_len(lines: Iterable[str], max_len: int = 4000) -> Iterable[str]:
+    """Собирает строки в чанки не длиннее max_len для Telegram."""
+    acc: List[str] = []
+    length = 0
+    for line in lines:
+        # +1 за перенос строки
+        add = len(line) + 1
+        if length + add > max_len and acc:
+            yield "\n".join(acc)
+            acc, length = [line], add
+        else:
+            acc.append(line)
+            length += add
+    if acc:
+        yield "\n".join(acc)
+
+
+def lots_by_risk(entry: float, stop: float, capital: float, risk_pct: float, lot: int = 1) -> int:
+    """Примерная оценка количества лотов по риску (без комиссий)."""
+    try:
+        risk_money = max(0.0, capital * risk_pct)
+        per_share_loss = abs(entry - stop)
+        if per_share_loss <= 0.0:
+            return 0
+        raw_shares = math.floor(risk_money / per_share_loss)
+        if raw_shares <= 0:
+            return 0
+        # округление до лота
+        if lot <= 1:
+            return raw_shares
+        return max(0, (raw_shares // lot) * lot)
+    except Exception:
+        return 0
+
+# ---------- CSV загрузка кандидатов ----------
+
+CSV_FIELDS = [
+    "ts", "ticker", "class_code", "trend_d1", "zone", "rsi_h4", "scenario",
+    "recommendation", "entry", "stop", "target", "all_in_bps", "cost_r", "passed",
+]
+
+
+def load_candidates(csv_path: str) -> List[Candidate]:
+    result: List[Candidate] = []
+    if not os.path.exists(csv_path):
+        return result
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                ts = parse_ts(row.get("ts", "") or row.get("timestamp", ""))
+                c = Candidate(
+                    ts=ts,
+                    ticker=(row.get("ticker") or row.get("TICKER") or "").strip(),
+                    class_code=(row.get("class_code") or row.get("CLASS_CODE") or "").strip(),
+                    trend_d1=(row.get("trend_d1") or "").strip(),
+                    zone=(row.get("zone") or "").strip(),
+                    rsi_h4=parse_float(row.get("rsi_h4")),
+                    scenario=(row.get("scenario") or "").strip(),
+                    recommendation=(row.get("recommendation") or row.get("reco") or "").strip().lower(),
+                    entry=parse_float(row.get("entry") or "0") or 0.0,
+                    stop=parse_float(row.get("stop") or "0") or 0.0,
+                    target=parse_float(row.get("target") or "0") or 0.0,
+                    all_in_bps=parse_float(row.get("all_in_bps")),
+                    cost_r=parse_float(row.get("cost_r")),
+                    passed=parse_bool(row.get("passed") or row.get("confirm") or row.get("pass") or row.get("PASS")),
+                )
+                result.append(c)
+            except Exception:
+                # пропускаем кривые строки, чтобы не падать
+                continue
+    return result
+
+
+# ---------- Взаимодействие с Tinkoff Invest (async) ----------
+
+async def resolve_instrument_info(cli: AsyncClient, ticker: str, class_code: str) -> Optional[InstrumentInfo]:
+    """Получить FIGI/Name/Lot по тикеру + классу. Возвращает None при ошибке."""
+    if not ticker:
+        return None
+    try:
+        r = await _resolve_instrument(cli, c.ticker, getattr(c,'class',None) or getattr(c,'class_code',None))
+        ins = r.instrument
+        if not ins or not ins.figi:
+            return None
+        lot = getattr(ins, "lot", None) or getattr(ins, "lot_size", 1) or 1
+        name = getattr(ins, "name", ticker)
+        return InstrumentInfo(figi=ins.figi, name=name, lot=int(lot))
+    except RequestError:
+        return None
+    except Exception:
+        return None
+
+
+async def get_last_price_safe(cli: AsyncClient, figi: str) -> Optional[float]:
+    try:
+        resp = await cli.market_data.get_last_prices(figi=[figi])
+        if not resp.last_prices:
+            return None
+        return quotation_to_float(resp.last_prices[0].price)
+    except RequestError:
+        return None
+    except Exception:
+        return None
+
+
+# ---------- Бизнес-логика формирования сообщений ----------
+
+def filter_fresh_confirmed(cands: List[Candidate]) -> List[Candidate]:
+    """Оставляем только свежие (TTL) и подтверждённые (passed/recommendation)."""
+    fresh = []
+    for c in cands:
+        if c.ts and minutes_ago(c.ts) > TTL_MINUTES:
+            continue
+        # подтверждение: либо passed=True, либо в recommendation явно есть confirm/подтвержд
+        reco = (c.recommendation or "").lower()
+        if c.passed or ("confirm" in reco or "подтвержд" in reco):
+            fresh.append(c)
+    return fresh
+
+
+def pick_top(cands: List[Candidate], n: int) -> List[Candidate]:
+    # Простая эвристика: сортируем по лучшему cost_r (меньше лучше), затем по all_in_bps (больше лучше)
+    def key(c: Candidate):
+        cost_r = c.cost_r if c.cost_r is not None else float("inf")
+        bps = c.all_in_bps if c.all_in_bps is not None else -1e9
+        return (cost_r, -bps)
+    return sorted(cands, key=key)[: max(0, n)]
+
+
+# ---------- main ----------
+
+async def _resolve_instrument(c, ticker, class_code=None):
+    from trade_utils.position_helper import get_instrument_uid
+from tinkoff.invest import InstrumentIdType
+    # 1) пробуем по ticker+class_code
+try:
+        r = await _resolve_instrument(c, c.ticker if hasattr(c, "ticker") else c.ticker, getattr(c, "class", None))
+        return r.instrument
+except Exception:
+        pass
+    # 2) фолбэк: общий поиск и затем по UID (самый надёжный)
+
+    if fr and fr.instruments:
+        uid = fr.instruments[0].uid
+        r2 = await _resolve_instrument(c, c.ticker if hasattr(c, "ticker") else c.ticker, getattr(c, "class", None))
+        return r2.instrument
+    raise RuntimeError(f"Не удалось резолвить инструмент: {ticker} ({class_code})")
+
+def _make_markup(c):
+    rec = (getattr(c, 'recommendation', '') or '').lower()
+    direction = 'long' if 'long' in rec else ('short' if 'short' in rec else 'long')
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(text='Разместить', callback_data=f'place:{c.ticker}:{direction}')],
+        [InlineKeyboardButton(text='Отмена',     callback_data=f'cancel:{c.ticker}')]
+    ])
+
+from tinkoff.invest import InstrumentIdType
+
+
+from tinkoff.invest import InstrumentIdType
+async def main():
+    print("[push] start", flush=True)
+
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[push] TELEGRAM_* env not set — выходим", flush=True)
+        return
+
+    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
+    # 1) Загружаем кандидатов
+    public = filter_fresh_confirmed(load_candidates(PUBLIC_CSV))
+    ki     = filter_fresh_confirmed(load_candidates(KI_CSV))
+
+    # 2) Предрезка до 2*TOP_N (дальше ещё будет Δ-фильтр по цене)
+    public = pick_top(public, TOP_N * 2)
+    ki     = pick_top(ki, TOP_N * 2)
+
+    if not public and not ki:
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="— Подтверждённых сигналов нет.")
+        print("[push] no confirmed — exit", flush=True)
+        return
+
+    # 3) Подтягиваем инфу об инструментах и ласт-цены, фильтруем по Δ
+    out_public: List[Tuple[Candidate, InstrumentInfo, Optional[float]]] = []
+    out_ki:     List[Tuple[Candidate, InstrumentInfo, Optional[float]]] = []
+
+    if not TINKOFF_TOKEN:
+        print("[push] WARNING: нет TINKOFF_TOKEN — пропустим проверку Δ и имена (шлём только тикеры)", flush=True)
+        # Без Тинькофф клиента просто упакуем без Δ-фильтра и имён
+        for lst, dst in ((public, out_public), (ki, out_ki)):
+            for c in lst:
+                dst.append((c, InstrumentInfo(figi=c.ticker, name=c.ticker, lot=1), None))
+    else:
+        async with AsyncClient(TINKOFF_TOKEN) as cli:
+            for lst, dst in ((public, out_public), (ki, out_ki)):
+                for c in lst[: TOP_N * 2]:  # небольшой запас перед отсевом по Δ
+                    info = await resolve_instrument_info(cli, c.ticker, c.class_code)
+                    if not info:
+                        continue
+                    last_px = await get_last_price_safe(cli, info.figi)
+                    if last_px is None:
+                        # если цену не смогли получить — пропускаем Δ-фильтр (чтобы не терять сигнал)
+                        dst.append((c, info, None))
+                        continue
+                    dev = 0.0
+                    if c.entry > 0:
+                        dev = abs(last_px - c.entry) / c.entry * 100.0
+                    if dev <= MAX_DEVIATION_PCT:
+                        dst.append((c, info, last_px))
+            # урежем до TOP_N уже после Δ-фильтра
+            out_public = out_public[:TOP_N]
+            out_ki     = out_ki[:TOP_N]
+
+    # 4) Сообщение(я)
+    header = (
+        f"✅ Подтверждённые входы (без watch)\n"
+        f"Фильтры: TTL≤{TTL_MINUTES} мин, |Δ от entry|≤{MAX_DEVIATION_PCT:.2f}%\n"
+        f"Риск≈{int(RISK_PCT*100)}% от капитала {int(CAPITAL)} ₽\n"
+    )
+
+    def line_for(c: Candidate, info: InstrumentInfo, last_px: Optional[float]) -> str:
+        rsi_txt = f"{c.rsi_h4:.1f}" if c.rsi_h4 is not None else "—"
+        lots = lots_by_risk(c.entry, c.stop, CAPITAL, RISK_PCT, lot=info.lot)
+        dev_txt = ""
+        if last_px is not None and c.entry > 0:
+            dev = (last_px - c.entry) / c.entry * 100.0
+            arrow = "▲" if dev >= 0 else "▼"
+            dev_txt = f" | Δ={arrow}{abs(dev):.2f}% (now {last_px:.2f})"
+        return (
+            f"• {c.ticker} ({c.class_code}) — {info.name}\n"
+            f"  D1:{c.trend_d1}, Zone:{c.zone}, RSI(H4): {rsi_txt}\n"
+            f"  {c.scenario}\n"
+            f"  Уровни: entry {c.entry:.2f} / stop {c.stop:.2f} / target {c.target:.2f}"
+            f"{dev_txt} | lots≈{lots}"
+        )
+
+    lines: List[str] = [header]
+
+    if out_public:
+        lines.append("📈 Публичные (можно разместить из бота):")
+        for c, info, last_px in out_public:
+            lines.append(line_for(c, info, last_px))
+    else:
+        lines.append("— Публичных подтверждённых сигналов нет.")
+
+    if out_ki:
+        lines.append("\n🧪 КИ (инфо; разместить вручную):")
+        for c, info, last_px in out_ki:
+            lines.append(line_for(c, info, last_px))
+    else:
+        lines.append("\n— КИ-подтверждений нет.")
+
+    # Режем по лимиту телеграма и отправляем пачками
+    for chunk in chunks_by_len(lines, max_len=4000):
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=chunk, reply_markup=_make_markup(c))
+
+    # Приложим CSV-источник (опционально)
+    try:
+        if os.path.exists(PUBLIC_CSV):
+            with open(PUBLIC_CSV, "rb") as f:
+                await bot.send_document(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    document=InputFile(f, filename=os.path.basename(PUBLIC_CSV)),
+                    caption="Источник: public CSV (включает и watch-записи, но рассылка — только confirm).",
+                )
+    except Exception:
+        pass
+
+    print("[push] done", flush=True)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
