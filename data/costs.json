@@ -1,0 +1,8 @@
+{
+  "default": { "stock_allin_bps": 8, "futures_allin_bps": 4 },
+  "overrides": {
+    "PLZL": 12,
+    "GOLD": 10,
+    "BR": 6
+  }
+}
