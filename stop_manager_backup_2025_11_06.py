@@ -5,6 +5,7 @@ import logging
 import pandas as pd
 from decimal import Decimal
 from tinkoff.invest import (
+from trade_utils.orders import post_order_safe_sync
     Client,
     OrderDirection,
     OrderType,
@@ -103,7 +104,7 @@ def place_stop_orders():
                 stop_price = decimal_to_quotation(stop)
                 price = decimal_to_quotation(entry)
 
-                sl_order = client.orders.post_order(
+                sl_order = post_order_safe_sync(client, 
                     order_id=str(__import__("uuid").uuid4())).uuid4())).timestamp()}",
                     figi=figi,
                     quantity=qty,
@@ -119,7 +120,7 @@ def place_stop_orders():
                 tp_direction = direction
                 tp_price = decimal_to_quotation(target)
 
-                tp_order = client.orders.post_order(
+                tp_order = post_order_safe_sync(client, 
                     order_id=str(__import__("uuid").uuid4())).uuid4())).timestamp()}",
                     figi=figi,
                     quantity=qty,
@@ -171,4 +172,3 @@ def place_stop_orders():
 # === Запуск ===
 if __name__ == "__main__":
     place_stop_orders()
-

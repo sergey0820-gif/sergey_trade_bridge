@@ -2,6 +2,7 @@
 import os, sys, traceback
 from uuid import uuid4
 from dotenv import load_dotenv
+from trade_utils.orders import post_order_safe_sync
 
 load_dotenv(".env")
 
@@ -82,7 +83,7 @@ def main():
         order_id=str(__import__("uuid").uuid4())).uuid4())))
         print("Placing MARKET BUY 1 lot ...")
         try:
-            resp = client.orders.post_order(
+            resp = post_order_safe_sync(client, 
                 account_id=ACC,
                 figi=figi,  # в этой ревизии FIGI обычно принимается как instrument identifier
                 quantity=QTY,
@@ -96,7 +97,7 @@ def main():
             # На некоторых ревизиях нужен instrument_id=figi вместо figi=
             print("TypeError: пробуем вариант с instrument_id= ...", te)
             try:
-                resp = client.orders.post_order(
+                resp = post_order_safe_sync(client, 
                     account_id=ACC,
                     instrument_id=figi,
                     quantity=QTY,
