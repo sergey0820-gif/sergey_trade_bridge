@@ -50,7 +50,6 @@ def main():
     try:
         from tinkoff.invest import (
             Client, OrderDirection, OrderType
-        )
     except Exception as e:
         print("ERROR: не найден пакет tinkoff-investments в .venv:", e)
         sys.exit(1)
@@ -88,8 +87,8 @@ def main():
                 quantity=QTY,
                 direction=OrderDirection.ORDER_DIRECTION_BUY,
                 order_type=OrderType.ORDER_TYPE_MARKET,
-                order_id=str(uuid4()))
-            )
+                order_id=str(uuid4(),
+                )
             print("Order response:", resp)
             print("✅ Отправлено. Проверь терминал/приложение.")
         except TypeError as te:
@@ -101,9 +100,8 @@ def main():
                     instrument_id=figi,
                     quantity=QTY,
                     direction=OrderDirection.ORDER_DIRECTION_BUY,
-                    order_type=OrderType.ORDER_TYPE_MARKET,
-                    order_id=str(uuid4()))
-                )
+                        order_id=str(uuid4(),
+                    )
                 print("Order response (instrument_id=):", resp)
                 print("✅ Отправлено. Проверь терминал/приложение.")
             except Exception:

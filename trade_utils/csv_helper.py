@@ -12,6 +12,7 @@ import pandas as pd
 PENDING_FILE = "pending_stops.csv"
 REQUIRED_COLUMNS = ["ticker", "class_code", "stop_price", "target_price"]
 
+
 def load_pending_stops(file_path: str = PENDING_FILE) -> pd.DataFrame:
     """
     Загружает CSV‑файл, проверяет наличие обязательных колонок,
@@ -43,6 +44,7 @@ def load_pending_stops(file_path: str = PENDING_FILE) -> pd.DataFrame:
 
     return df
 
+
 def validate_row(row: pd.Series) -> bool:
     """
     Проверяет корректность одной строки:
@@ -69,4 +71,3 @@ def validate_row(row: pd.Series) -> bool:
         return False
 
     return True
-

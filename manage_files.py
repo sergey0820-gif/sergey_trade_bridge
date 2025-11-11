@@ -11,11 +11,8 @@ LOG_PATH = os.path.join(BASE_DIR, "logs", "manage_files.log")
 os.makedirs(BACKUP_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 
-CSV_FILES = [
-    "candidates.csv",
-    "live_candidates_public.csv",
-    "live_candidates_ki.csv"
-]
+CSV_FILES = ["candidates.csv", "live_candidates_public.csv", "live_candidates_ki.csv"]
+
 
 def log(message):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -23,6 +20,7 @@ def log(message):
     print(full)
     with open(LOG_PATH, "a") as f:
         f.write(full + "\n")
+
 
 def copy_file(file):
     if not os.path.exists(file):
@@ -33,6 +31,7 @@ def copy_file(file):
     new_name = f"{name}_{now}{ext}"
     shutil.copy(file, os.path.join(BACKUP_DIR, new_name))
     log(f"✅ Скопировано: {file} → {new_name}")
+
 
 def clean():
     for file in CSV_FILES:
@@ -92,4 +91,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

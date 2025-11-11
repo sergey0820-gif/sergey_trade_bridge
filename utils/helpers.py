@@ -14,7 +14,9 @@ interval_map = {
 }
 
 
-def get_candles(ticker: str, class_code: str, interval: str = "day", days: int = 30) -> pd.DataFrame | None:
+def get_candles(
+    ticker: str, class_code: str, interval: str = "day", days: int = 30
+) -> pd.DataFrame | None:
     try:
         with Client(TOKEN) as client:
             # Поиск инструмента по тикеру и классу
@@ -32,7 +34,9 @@ def get_candles(ticker: str, class_code: str, interval: str = "day", days: int =
             figi = instrument.figi
 
             # Установка временного диапазона
-            interval_enum = interval_map.get(interval, CandleInterval.CANDLE_INTERVAL_DAY)
+            interval_enum = interval_map.get(
+                interval, CandleInterval.CANDLE_INTERVAL_DAY
+            )
             to_ = datetime.now(timezone.utc)
             from_ = to_ - timedelta(days=days)
 
@@ -48,18 +52,22 @@ def get_candles(ticker: str, class_code: str, interval: str = "day", days: int =
                 print(f"⚠️ Нет свечей для: {ticker}")
                 return None
 
-            df = pd.DataFrame([{
-                "time": c.time,
-                "open": c.open.units + c.open.nano / 1e9,
-                "high": c.high.units + c.high.nano / 1e9,
-                "low": c.low.units + c.low.nano / 1e9,
-                "close": c.close.units + c.close.nano / 1e9,
-                "volume": c.volume,
-            } for c in candles])
+            df = pd.DataFrame(
+                [
+                    {
+                        "time": c.time,
+                        "open": c.open.units + c.open.nano / 1e9,
+                        "high": c.high.units + c.high.nano / 1e9,
+                        "low": c.low.units + c.low.nano / 1e9,
+                        "close": c.close.units + c.close.nano / 1e9,
+                        "volume": c.volume,
+                    }
+                    for c in candles
+                ]
+            )
 
             return df
 
     except Exception as e:
         print(f"⚠️ Ошибка в get_candles() для {ticker}: {e}")
         return None
-

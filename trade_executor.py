@@ -1,4 +1,5 @@
 from trade_utils.orders import post_order_safe
+from uuid import uuid4
 # trade_executor.py
 
 import argparse
@@ -63,7 +64,7 @@ def place_order(ticker, class_code, side, entry, stop, target):
             direction=direction,
             account_id=ACCOUNT_ID,
             order_type=OrderType.ORDER_TYPE_MARKET,
-            order_id=str(__import__("uuid").uuid4())).uuid4())).uuid4())).strftime('%H%M%S')}"
+            order_id=str(uuid4())))).uuid4())).uuid4())).strftime('%H%M%S')}"
         )
 
         # Сохраняем в pending_stops.csv

@@ -27,17 +27,20 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 TOKEN = os.getenv("TINKOFF_TOKEN") or os.getenv("TINKOFF_INVEST_TOKEN")  # на всякий
 ACCOUNT_ID = os.getenv("TINKOFF_ACCOUNT_ID")
 
+
 # ---------- UTIL ----------
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
 
 def money_to_float(mv) -> float:
     """Универсальный парсер MoneyValue/Quotation -> float."""
     if mv is None:
         return 0.0
     units = getattr(mv, "units", 0) or 0
-    nano  = getattr(mv, "nano", 0) or 0
+    nano = getattr(mv, "nano", 0) or 0
     return float(units) + float(nano) / 1e9
+
 
 def operation_fee_to_float(op) -> float:
     """
@@ -53,6 +56,7 @@ def operation_fee_to_float(op) -> float:
         if val is not None:
             return money_to_float(val)
     return 0.0
+
 
 def call_with_backoff(fn, *args, **kwargs):
     """Вызов метода SDK с мягким бэкоффом при RESOURCE_EXHAUSTED."""
@@ -77,6 +81,7 @@ def call_with_backoff(fn, *args, **kwargs):
                 continue
             raise
 
+
 # ---------- FETCHERS ----------
 def fetch_portfolio_positions(client, account_id):
     """Портфельные позиции + текущие рыночные цены (где доступны)."""
@@ -93,18 +98,21 @@ def fetch_portfolio_positions(client, account_id):
         cur = getattr(getattr(p, "average_position_price", None), "currency", "") or ""
         # Текущая рыночная оценка/цена
         current_price = money_to_float(getattr(p, "current_price", None))
-        rows.append({
-            "ts": ts,
-            "ticker": getattr(p, "ticker", "") or figi,
-            "figi": figi,
-            "class": getattr(p, "instrument_type", ""),
-            "qty": qty,
-            "avg_price": avg,
-            "currency": cur,
-            "market_price": current_price,
-            "name": name
-        })
+        rows.append(
+            {
+                "ts": ts,
+                "ticker": getattr(p, "ticker", "") or figi,
+                "figi": figi,
+                "class": getattr(p, "instrument_type", ""),
+                "qty": qty,
+                "avg_price": avg,
+                "currency": cur,
+                "market_price": current_price,
+                "name": name,
+            }
+        )
     return rows
+
 
 def fetch_active_orders(client, account_id):
     """Активные (размещённые) заявки."""
@@ -117,30 +125,37 @@ def fetch_active_orders(client, account_id):
     ts = now_utc_iso()
     rows = []
     for o in orders or []:
-        rows.append({
-            "ts": ts,
-            "order_id": getattr(o, "order_id", ""),
-            "ticker": getattr(o, "ticker", "") or getattr(o, "figi", ""),
-            "figi": getattr(o, "figi", ""),
-            "direction": getattr(o, "direction", ""),
-            "price": money_to_float(getattr(o, "initial_order_price", None)) or money_to_float(getattr(o, "price", None)),
-            "lots": getattr(o, "lots_requested", 0) or getattr(o, "lots", 0),
-            "status": getattr(o, "execution_report_status", ""),
-        })
+        rows.append(
+            {
+                "ts": ts,
+                "order_id": getattr(o, "order_id", ""),
+                "ticker": getattr(o, "ticker", "") or getattr(o, "figi", ""),
+                "figi": getattr(o, "figi", ""),
+                "direction": getattr(o, "direction", ""),
+                "price": money_to_float(getattr(o, "initial_order_price", None))
+                or money_to_float(getattr(o, "price", None)),
+                "lots": getattr(o, "lots_requested", 0) or getattr(o, "lots", 0),
+                "status": getattr(o, "execution_report_status", ""),
+            }
+        )
     return rows
+
 
 def fetch_operations_today(client, account_id):
     """Возвращает список OperationItem/Operation за сегодня (EXECUTED), с поддержкой обеих версий API."""
-    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    end   = datetime.now(timezone.utc)
+    start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    end = datetime.now(timezone.utc)
     # пробуем новый курсорный API
     try:
         resp = call_with_backoff(
             client.operations.get_operations_by_cursor,
             account_id=account_id,
-            from_=start, to=end,
+            from_=start,
+            to=end,
             state=OperationState.OPERATION_STATE_EXECUTED,
-            limit=1000
+            limit=1000,
         )
         items = list(getattr(resp, "items", []) or [])
         while getattr(resp, "has_next", False):
@@ -148,7 +163,7 @@ def fetch_operations_today(client, account_id):
                 client.operations.get_operations_by_cursor,
                 account_id=account_id,
                 cursor=getattr(resp, "next_cursor", ""),
-                limit=1000
+                limit=1000,
             )
             items.extend(getattr(resp, "items", []) or [])
         return items
@@ -159,12 +174,14 @@ def fetch_operations_today(client, account_id):
         resp = call_with_backoff(
             client.operations.get_operations,
             account_id=account_id,
-            from_=start, to=end,
-            state=OperationState.OPERATION_STATE_EXECUTED
+            from_=start,
+            to=end,
+            state=OperationState.OPERATION_STATE_EXECUTED,
         )
         return getattr(resp, "operations", []) or []
     except Exception:
         return []
+
 
 # ---------- I/O ----------
 def write_csv(path, fieldnames, rows):
@@ -174,25 +191,47 @@ def write_csv(path, fieldnames, rows):
         for r in rows:
             w.writerow(r)
 
+
 def main():
     if not TOKEN or not ACCOUNT_ID:
-        raise RuntimeError("❌ Нет TINKOFF_TOKEN (или TINKOFF_INVEST_TOKEN) и/или TINKOFF_ACCOUNT_ID в .env")
+        raise RuntimeError(
+            "❌ Нет TINKOFF_TOKEN (или TINKOFF_INVEST_TOKEN) и/или TINKOFF_ACCOUNT_ID в .env"
+        )
 
     with Client(TOKEN) as client:
         # Позиции
         pos_rows = fetch_portfolio_positions(client, ACCOUNT_ID)
         write_csv(
             os.path.join(OUT_DIR, "positions.csv"),
-            ["ts","ticker","figi","class","qty","avg_price","currency","market_price","name"],
-            pos_rows
+            [
+                "ts",
+                "ticker",
+                "figi",
+                "class",
+                "qty",
+                "avg_price",
+                "currency",
+                "market_price",
+                "name",
+            ],
+            pos_rows,
         )
 
         # Активные заявки
         ord_rows = fetch_active_orders(client, ACCOUNT_ID)
         write_csv(
             os.path.join(OUT_DIR, "orders.csv"),
-            ["ts","order_id","ticker","figi","direction","price","lots","status"],
-            ord_rows
+            [
+                "ts",
+                "order_id",
+                "ticker",
+                "figi",
+                "direction",
+                "price",
+                "lots",
+                "status",
+            ],
+            ord_rows,
         )
 
         # Операции за сегодня
@@ -200,21 +239,26 @@ def main():
         ops_rows = []
         for op in ops_api_list:
             dt = getattr(op, "date", None)
-            ops_rows.append({
-                "ts": dt.isoformat() if dt else "",
-                "id": getattr(op, "id", ""),
-                "name": getattr(op, "instrument_name", "") or getattr(op, "figi", ""),
-                "type": getattr(op, "operation_type", ""),
-                "currency": getattr(op, "currency", "") or "",
-                "payment": money_to_float(getattr(op, "payment", None)),
-                "price": money_to_float(getattr(op, "price", None)),
-                "qty": getattr(op, "quantity", 0) or getattr(op, "quantity_executed", 0) or 0,
-                "fee": operation_fee_to_float(op),
-            })
+            ops_rows.append(
+                {
+                    "ts": dt.isoformat() if dt else "",
+                    "id": getattr(op, "id", ""),
+                    "name": getattr(op, "instrument_name", "")
+                    or getattr(op, "figi", ""),
+                    "type": getattr(op, "operation_type", ""),
+                    "currency": getattr(op, "currency", "") or "",
+                    "payment": money_to_float(getattr(op, "payment", None)),
+                    "price": money_to_float(getattr(op, "price", None)),
+                    "qty": getattr(op, "quantity", 0)
+                    or getattr(op, "quantity_executed", 0)
+                    or 0,
+                    "fee": operation_fee_to_float(op),
+                }
+            )
         write_csv(
             os.path.join(OUT_DIR, "operations_today.csv"),
-            ["ts","id","name","type","currency","payment","price","qty","fee"],
-            ops_rows
+            ["ts", "id", "name", "type", "currency", "payment", "price", "qty", "fee"],
+            ops_rows,
         )
 
         # Снимок
@@ -229,12 +273,13 @@ def main():
                 "positions": os.path.join(OUT_DIR, "positions.csv"),
                 "orders": os.path.join(OUT_DIR, "orders.csv"),
                 "operations_today": os.path.join(OUT_DIR, "operations_today.csv"),
-            }
+            },
         }
         with open(os.path.join(OUT_DIR, "snapshot.json"), "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False)
 
         print(json.dumps(snapshot, ensure_ascii=False))
+
 
 if __name__ == "__main__":
     main()

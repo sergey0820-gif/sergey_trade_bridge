@@ -19,7 +19,9 @@ def print_positions():
         print("\n📊 Аккаунт для анализа:", ACCOUNT_ID)
 
         response = client.operations.get_positions(account_id=ACCOUNT_ID)
-        all_positions = list(response.securities) + list(response.futures) + list(response.options)
+        all_positions = (
+            list(response.securities) + list(response.futures) + list(response.options)
+        )
 
         if not all_positions:
             print("🚫 Нет открытых позиций.")
@@ -29,7 +31,9 @@ def print_positions():
         for p in all_positions:
             figi = p.figi
             try:
-                instrument = client.instruments.find_instrument(query=figi).instruments[0]
+                instrument = client.instruments.find_instrument(query=figi).instruments[
+                    0
+                ]
                 ticker = instrument.ticker
                 class_code = instrument.class_code
             except Exception as e:
@@ -45,7 +49,10 @@ def print_positions():
 
             # Цена
             if hasattr(p, "average_position_price"):
-                price = float(p.average_position_price.units) + float(p.average_position_price.nano) / 1e9
+                price = (
+                    float(p.average_position_price.units)
+                    + float(p.average_position_price.nano) / 1e9
+                )
             else:
                 price = 0.0
 
@@ -57,4 +64,3 @@ def print_positions():
 if __name__ == "__main__":
     print("🔍 Получаем текущие позиции по счёту...\n")
     print_positions()
-

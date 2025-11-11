@@ -1,71 +1,31 @@
-# ~/sergey_trade_bridge/place_one_sber.py
-import os, sys, traceback
+#!/usr/bin/env python3
+import os, traceback
 from uuid import uuid4
 from dotenv import load_dotenv
+from tinkoff.invest import Client, OrderDirection, OrderType, InstrumentIdType
 from trade_utils.orders import post_order_safe_sync
 
-load_dotenv(".env")
-
-TOKEN = os.getenv("TINKOFF_TOKEN") or os.getenv("TINKOFF_INVEST_TOKEN")
-ACC   = os.getenv("TINKOFF_ACCOUNT_ID")
-ALLOW_PLACE = os.getenv("ALLOW_PLACE", "false").lower() in ("1","true","yes","on")
-TICKER = "SBER"
-CLASS  = "TQBR"
-QTY    = 1  # 1 лот у SBER = 1 акция
-
-def find_sber_figi(client):
-    """
-    1) Пытаемся через get_instrument_by(id_type=TICKER)
-    2) Если не получилось — через список акций, фильтруя по ticker и class_code='TQBR'
-    Возвращает (figi, lot) или (None, None)
-    """
-    try:
-        from tinkoff.invest import InstrumentIdType
-        inst = client.instruments.get_instrument_by(
-            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
-            id=TICKER
-        ).instrument
-        if inst and getattr(inst, "class_code", "") == CLASS:
-            return inst.figi, getattr(inst, "lot", 1) or 1
-        # Если вернулся не TQBR, попробуем fallback
-    except Exception as e:
-        print("get_instrument_by fallback:", e)
-
-    # Fallback: полный список, фильтруем по тикеру и классу
-    try:
-        shares = client.instruments.shares().instruments
-        for s in shares:
-            if getattr(s, "ticker", "") == TICKER and getattr(s, "class_code", "") == CLASS:
-                return s.figi, getattr(s, "lot", 1) or 1
-    except Exception as e:
-        print("shares() fallback error:", e)
-
-    return None, None
-
 def main():
-    if not TOKEN or not ACC:
-        print("ERROR: нет TINKOFF_TOKEN/TINKOFF_INVEST_TOKEN или TINKOFF_ACCOUNT_ID в .env")
-        sys.exit(1)
+    load_dotenv()
+    token = os.getenv("TINKOFF_TOKEN")
+    account = os.getenv("TINKOFF_ACCOUNT_ID")
+    if not token or not account:
+        print("❌ .env: нет TINKOFF_TOKEN/TINKOFF_ACCOUNT_ID"); return
 
-    try:
-        from tinkoff.invest import (
-            Client, OrderDirection, OrderType
-        )
-    except Exception as e:
-        print("ERROR: не найден пакет tinkoff-investments в .venv:", e)
-        sys.exit(1)
+    ticker = os.getenv("TICKER", "SBER")
+    class_code = os.getenv("CLASS_CODE", "TQBR")
+    qty = int(os.getenv("QTY", "1"))
+    allow_place = os.getenv("ALLOW_PLACE", "false").lower() in ("1","true","yes","y")
 
-    print("LIVE mode: ALLOW_PLACE=true" if ALLOW_PLACE else "Dry-run mode (ALLOW_PLACE!=true)")
+    with Client(token) as client:
+        instr = client.instruments.get_instrument_by(
+            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+            class_code=class_code,
+            id=ticker
+        ).instrument
+        uid = instr.uid
+        figi = instr.figi
 
-    with Client(TOKEN) as client:
-        # FIGI + lot
-        figi, lot = find_sber_figi(client)
-        if not figi:
-            print("ERROR: не удалось определить FIGI для SBER/TQBR")
-            sys.exit(2)
-        print(f"FOUND: {TICKER} class={CLASS} figi={figi} lot={lot}")
-
-        # Необязательное: показать последнюю цену
         try:
             lp = client.market_data.get_last_prices(figi=[figi]).last_prices
             if lp:
@@ -75,44 +35,21 @@ def main():
         except Exception as e:
             print("warn: last price not available:", e)
 
-        if not ALLOW_PLACE:
-            print(f"[DRY] BUY {QTY} лот(ов) SBER MARKET готов. Включи ALLOW_PLACE=true в .env для реальной постановки.")
+        if not allow_place:
+            print(f"[DRY] Готов поставить MARKET BUY {qty} лот(ов) {ticker}. Включи ALLOW_PLACE=true в .env для реальной постановки.")
             return
 
-        # Пытаемся MARKET BUY 1 лот
-        order_id=str(__import__("uuid").uuid4())).uuid4())))
-        print("Placing MARKET BUY 1 lot ...")
-        try:
-            resp = post_order_safe_sync(client, 
-                account_id=ACC,
-                figi=figi,  # в этой ревизии FIGI обычно принимается как instrument identifier
-                quantity=QTY,
-                direction=OrderDirection.ORDER_DIRECTION_BUY,
-                order_type=OrderType.ORDER_TYPE_MARKET,
-                order_id=str(__import__("uuid").uuid4())).uuid4())
-            )
-            print("Order response:", resp)
-            print("✅ Отправлено. Проверь терминал/приложение.")
-        except TypeError as te:
-            # На некоторых ревизиях нужен instrument_id=figi вместо figi=
-            print("TypeError: пробуем вариант с instrument_id= ...", te)
-            try:
-                resp = post_order_safe_sync(client, 
-                    account_id=ACC,
-                    instrument_id=figi,
-                    quantity=QTY,
-                    direction=OrderDirection.ORDER_DIRECTION_BUY,
-                    order_type=OrderType.ORDER_TYPE_MARKET,
-                    order_id=str(__import__("uuid").uuid4())).uuid4())
-                )
-                print("Order response (instrument_id=):", resp)
-                print("✅ Отправлено. Проверь терминал/приложение.")
-            except Exception:
-                print("Ошибка при альтернативной постановке:")
-                traceback.print_exc()
-        except Exception:
-            print("Ошибка при post_order:")
-            traceback.print_exc()
+        print("Placing MARKET BUY…")
+        resp = post_order_safe_sync(
+            client,
+            account_id=account,
+            instrument_id=uid,  # в v2 разрешён FIGI или instrument_uid
+            quantity=qty,
+            direction=OrderDirection.ORDER_DIRECTION_BUY,
+            order_type=OrderType.ORDER_TYPE_MARKET,
+            order_id=str(uuid4()),
+        )
+        print("Order response:", resp)
 
 if __name__ == "__main__":
     main()

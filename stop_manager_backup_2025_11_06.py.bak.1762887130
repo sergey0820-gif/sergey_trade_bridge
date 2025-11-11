@@ -1,11 +1,12 @@
+from uuid import uuid4
 # stop_manager.py
 
 import os
 import logging
 import pandas as pd
 from decimal import Decimal
-from tinkoff.invest import (
 from trade_utils.orders import post_order_safe_sync
+from tinkoff.invest import (
     Client,
     OrderDirection,
     OrderType,
@@ -104,32 +105,31 @@ def place_stop_orders():
                 stop_price = decimal_to_quotation(stop)
                 price = decimal_to_quotation(entry)
 
-                sl_order = post_order_safe_sync(client, 
-                    order_id=str(__import__("uuid").uuid4())).uuid4())).timestamp()}",
+                sl_order = post_order_safe_sync(
+                    client,
+                    account_id=ACCOUNT_ID,
                     figi=figi,
                     quantity=qty,
                     direction=direction,
-                    account_id=ACCOUNT_ID,
                     order_type=OrderType.ORDER_TYPE_STOP_LIMIT,
                     price=price,
-                    stop_price=stop_price
+                    stop_price=stop_price,
+                    order_id=str(uuid4(),
                 )
-                sl_order_id=str(__import__("uuid").uuid4())).uuid4())
 
                 # === Take Profit ===
                 tp_direction = direction
                 tp_price = decimal_to_quotation(target)
 
                 tp_order = post_order_safe_sync(client, 
-                    order_id=str(__import__("uuid").uuid4())).uuid4())).timestamp()}",
+                    order_id=str(uuid4()}",
                     figi=figi,
                     quantity=qty,
                     direction=tp_direction,
                     account_id=ACCOUNT_ID,
                     order_type=OrderType.ORDER_TYPE_LIMIT,
                     price=tp_price
-                )
-                tp_order_id=str(__import__("uuid").uuid4())).uuid4())
+                tp_order_id=str(uuid4()
 
                 placed_rows.append({
                     "ticker": ticker,

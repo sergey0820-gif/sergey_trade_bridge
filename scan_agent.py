@@ -67,7 +67,7 @@ for sym in symbols:
                 "rsi": result["rsi"],
                 "volume_ratio": result["volume_ratio"],
                 "pattern": result["pattern"],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
             new_signals.append(row)
     except Exception as e:

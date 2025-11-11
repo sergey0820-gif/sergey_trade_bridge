@@ -1,5 +1,6 @@
 from tinkoff.invest import InstrumentIdType
 
+
 async def _resolve_uid(c, ticker: str, class_code: str | None):
     # 1) точный поиск по тикеру+классу
     if class_code:

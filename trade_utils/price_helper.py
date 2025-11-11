@@ -119,6 +119,6 @@ def place_stop_order(
 
     # По спецификации вернётся идентификатор стоп-заявки
     stop_id = resp.stop_order_id
-    logging.info(f"✅ Стоп-заявка размещена: stop_order_id=str(__import__("uuid").uuid4()))
+    logging.info(f"✅ Стоп-заявка размещена: stop_order_id={stop_id}")
     return stop_id
 

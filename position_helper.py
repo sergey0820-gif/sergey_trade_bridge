@@ -10,6 +10,7 @@ from decimal import Decimal
 from tinkoff.invest import Client, InstrumentIdType, StopOrderDirection
 from tinkoff.invest.utils import quotation_to_decimal
 
+
 def get_instrument_uid(client: Client, ticker: str, class_code: str) -> Optional[str]:
     """
     Возвращает instrument_uid (или figi) для заданного ticker + class_code.
@@ -28,16 +29,21 @@ def get_instrument_uid(client: Client, ticker: str, class_code: str) -> Optional
         logging.error(f"🚨 Ошибка при get_instrument_uid для {ticker}: {e}")
         return None
 
+
 def find_position(positions: list, instrument_uid: str) -> Optional[object]:
     """
     Ищет среди списка positions объект, соответствующий instrument_uid.
     Возвращает объект позиции или None.
     """
     for p in positions:
-        if getattr(p, "instrument_uid", None) == instrument_uid \
-           and getattr(p, "quantity", None) and p.quantity.units > 0:
+        if (
+            getattr(p, "instrument_uid", None) == instrument_uid
+            and getattr(p, "quantity", None)
+            and p.quantity.units > 0
+        ):
             return p
     return None
+
 
 def get_position_details(position_obj: object) -> Tuple[int, StopOrderDirection]:
     """
@@ -64,4 +70,3 @@ def get_position_details(position_obj: object) -> Tuple[int, StopOrderDirection]
         return qty, StopOrderDirection.STOP_ORDER_DIRECTION_SELL
     else:
         return qty, StopOrderDirection.STOP_ORDER_DIRECTION_BUY
-

@@ -9,7 +9,13 @@ from telegram import Update
 from telegram.ext import Application
 from telegram.ext import filters
 from telegram.ext import MessageHandler
-from telegram.ext import CommandHandler, CallbackQueryHandler, CommandHandler, ContextTypes, JobQueue
+from telegram.ext import (
+    CommandHandler,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    JobQueue,
+)
 
 load_dotenv()
 
@@ -71,7 +77,7 @@ async def send_signals(context: ContextTypes.DEFAULT_TYPE):
             chat_id=TELEGRAM_CHAT_ID,
             text=message,
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=keyboard,
         )
 
 
@@ -100,15 +106,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             subprocess.run(
                 [
-                    "python", "trade_executor.py",
-                    "--ticker", candidate["ticker"],
-                    "--class_code", candidate["class_code"],
-                    "--side", side,
-                    "--entry", candidate["entry"],
-                    "--stop", candidate["stop"],
-                    "--target", candidate["target"],
+                    "python",
+                    "trade_executor.py",
+                    "--ticker",
+                    candidate["ticker"],
+                    "--class_code",
+                    candidate["class_code"],
+                    "--side",
+                    side,
+                    "--entry",
+                    candidate["entry"],
+                    "--stop",
+                    candidate["stop"],
+                    "--target",
+                    candidate["target"],
                 ],
-                check=True
+                check=True,
             )
             await query.edit_message_text("✅ Сделка размещена.")
         except subprocess.CalledProcessError as e:
@@ -120,10 +133,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, JobQueue
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    JobQueue,
+)
+
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("pong")
+
 
 def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -135,5 +156,16 @@ def main():
     print("🤖 Telegram бот запущен...")
     application.run_polling()
 
+
 if __name__ == "__main__":
     main()
+
+def _skip_if_no_signals(text: str) -> bool:
+    """
+    True => текст содержит оба маркера 'нет', значит рассылку пропускаем.
+    """
+    try:
+        return ("Публичных подтверждённых сигналов нет" in text) and \
+               ("КИ-подтверждений нет" in text)
+    except Exception:
+        return False

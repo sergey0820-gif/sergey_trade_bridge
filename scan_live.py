@@ -20,13 +20,15 @@ COSTS_JSON = "data/costs.json"
 EVENTS_CSV = "data/events.csv"
 
 # --- настройки троттлинга и глубины ---
-RATE_LIMIT_DELAY = 0.30   # пауза после КАЖДОГО удачного API вызова (~3-4 req/s)
-TOP_DETAILED     = 40     # сколько инструментов считать "глубоко" (H1->H4 + стакан)
-MAX_RETRIES      = 12     # максимум повторов одного вызова при лимите
+RATE_LIMIT_DELAY = 0.30  # пауза после КАЖДОГО удачного API вызова (~3-4 req/s)
+TOP_DETAILED = 40  # сколько инструментов считать "глубоко" (H1->H4 + стакан)
+MAX_RETRIES = 12  # максимум повторов одного вызова при лимите
+
 
 # -------------- utils --------------
 def q2f(q):
-    return (q.units + q.nano / 1e9)
+    return q.units + q.nano / 1e9
+
 
 def ema(series, period):
     if not series:
@@ -36,6 +38,7 @@ def ema(series, period):
     for v in series:
         e = v if e is None else (v - e) * k + e
     return e
+
 
 def rsi(values, period=14):
     if len(values) < period + 1:
@@ -49,19 +52,27 @@ def rsi(values, period=14):
     rs = ag / al
     return 100 - 100 / (1 + rs)
 
+
 def load_costs():
     try:
         with open(COSTS_JSON, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"default": {"stock_allin_bps": 8, "futures_allin_bps": 4}, "overrides": {}}
+        return {
+            "default": {"stock_allin_bps": 8, "futures_allin_bps": 4},
+            "overrides": {},
+        }
+
 
 def all_in_commission_bps(ticker, klass, cfg):
     over = cfg.get("overrides", {}).get(ticker)
     if isinstance(over, (int, float)):
         return float(over)
     dflt = cfg["default"]
-    return float(dflt["stock_allin_bps"] if klass == "stock" else dflt["futures_allin_bps"])
+    return float(
+        dflt["stock_allin_bps"] if klass == "stock" else dflt["futures_allin_bps"]
+    )
+
 
 def planned_move_pct(klass, close, atr_pct):
     if klass == "stock":
@@ -70,8 +81,10 @@ def planned_move_pct(klass, close, atr_pct):
     # фьючи — используем ATR% (не меньше 1.5%)
     return max(atr_pct, 1.5)
 
+
 def cost_over_R(cost_bps, move_pct):
     return (cost_bps / 100.0) / move_pct if move_pct > 0 else 999.0
+
 
 def zone_by_price(close, hi20, lo20, atr):
     if close is None or hi20 is None or lo20 is None or atr is None:
@@ -81,6 +94,7 @@ def zone_by_price(close, hi20, lo20, atr):
     if close >= hi20 - atr:
         return "resistance"
     return "middle"
+
 
 def load_events():
     ev = {}
@@ -96,6 +110,7 @@ def load_events():
         pass
     return ev
 
+
 def near_event(ticker, today, ev, win=2):
     if ticker not in ev:
         return False
@@ -107,6 +122,7 @@ def near_event(ticker, today, ev, win=2):
         except Exception:
             continue
     return False
+
 
 # безопасный вызов API с ретраями и паузой
 def safe_call(fn, *args, **kwargs):
@@ -120,7 +136,11 @@ def safe_call(fn, *args, **kwargs):
             tries += 1
             code = getattr(e, "status_code", None)
             meta = getattr(e, "metadata", None)
-            if code and str(code).endswith("RESOURCE_EXHAUSTED") and tries <= MAX_RETRIES:
+            if (
+                code
+                and str(code).endswith("RESOURCE_EXHAUSTED")
+                and tries <= MAX_RETRIES
+            ):
                 reset = 5
                 if meta and getattr(meta, "ratelimit_reset", None):
                     try:
@@ -130,6 +150,7 @@ def safe_call(fn, *args, **kwargs):
                 time.sleep(reset + 1)
                 continue
             raise
+
 
 # -------------- main --------------
 def main():
@@ -155,22 +176,32 @@ def main():
         md = c.market_data
 
         # Универсум: все акции РФ (is_traded) + все фьючерсы
-        shares = safe_call(ins.shares, instrument_status=InstrumentStatus.INSTRUMENT_STATUS_BASE).instruments
+        shares = safe_call(
+            ins.shares, instrument_status=InstrumentStatus.INSTRUMENT_STATUS_BASE
+        ).instruments
         shares_ru = [
-            s for s in shares
-            if (s.country_of_risk == "RU" or s.country_of_risk_name == "Россия") and s.api_trade_available_flag
+            s
+            for s in shares
+            if (s.country_of_risk == "RU" or s.country_of_risk_name == "Россия")
+            and s.api_trade_available_flag
         ]
         futs = safe_call(ins.futures).instruments
 
-        universe = [{"figi": s.figi, "ticker": s.ticker, "class": "stock"} for s in shares_ru] + \
-                   [{"figi": f.figi, "ticker": f.ticker, "class": "futures"} for f in futs]
+        universe = [
+            {"figi": s.figi, "ticker": s.ticker, "class": "stock"} for s in shares_ru
+        ] + [{"figi": f.figi, "ticker": f.ticker, "class": "futures"} for f in futs]
 
         # --- ЭТАП A: 20d ликвидность и ATR% по всему списку ---
         pre = []
         for it in universe:
             figi = it["figi"]
-            d1 = safe_call(md.get_candles, figi=figi, from_=A_from, to=now,
-                           interval=CandleInterval.CANDLE_INTERVAL_DAY).candles
+            d1 = safe_call(
+                md.get_candles,
+                figi=figi,
+                from_=A_from,
+                to=now,
+                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+            ).candles
             if len(d1) < 10:
                 continue
 
@@ -181,10 +212,18 @@ def main():
 
             close = closes[-1]
             last = min(20, len(d1))
-            liq_val = (sum([vols[-i] * closes[-i] for i in range(1, last + 1)]) / last) if last > 0 else 0.0
+            liq_val = (
+                (sum([vols[-i] * closes[-i] for i in range(1, last + 1)]) / last)
+                if last > 0
+                else 0.0
+            )
 
             n = min(14, len(d1) - 1)
-            atr = (sum([highs[-i] - lows[-i] for i in range(1, n + 1)]) / n) if n > 0 else 0.0
+            atr = (
+                (sum([highs[-i] - lows[-i] for i in range(1, n + 1)]) / n)
+                if n > 0
+                else 0.0
+            )
             atr_pct = (atr / close * 100.0) if close else 0.0
 
             if len(highs) >= 20:
@@ -198,9 +237,9 @@ def main():
 
         # ранжирование по ликвидности
         pre.sort(key=lambda x: -x[0])
-        pre_all = pre[:150]             # общий топ
-        pre_detailed = pre_all[:TOP_DETAILED]   # глубокие расчёты
-        pre_light = pre_all[TOP_DETAILED:]      # упрощённые
+        pre_all = pre[:150]  # общий топ
+        pre_detailed = pre_all[:TOP_DETAILED]  # глубокие расчёты
+        pre_light = pre_all[TOP_DETAILED:]  # упрощённые
 
         # --- ЭТАП B1: детальная обработка TOP_DETAILED (D1 полный + H1->H4 + стакан) ---
         for liq_val, it, close_A, atrpct_A, hi20_A, lo20_A in pre_detailed:
@@ -209,8 +248,13 @@ def main():
             klass = it["class"]
 
             # D1 расширенно
-            d1 = safe_call(md.get_candles, figi=figi, from_=B_d1_from, to=now,
-                           interval=CandleInterval.CANDLE_INTERVAL_DAY).candles
+            d1 = safe_call(
+                md.get_candles,
+                figi=figi,
+                from_=B_d1_from,
+                to=now,
+                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+            ).candles
             if len(d1) < 60:
                 continue
 
@@ -220,11 +264,23 @@ def main():
             close = closes[-1]
 
             n = min(14, len(d1) - 1)
-            atr = (sum([highs[-i] - lows[-i] for i in range(1, n + 1)]) / n) if n > 0 else 0.0
+            atr = (
+                (sum([highs[-i] - lows[-i] for i in range(1, n + 1)]) / n)
+                if n > 0
+                else 0.0
+            )
             atr_pct = (atr / close * 100.0) if close else atrpct_A
 
-            ema50 = ema(closes[-60:], 50) if len(closes) >= 60 else ema(closes, min(50, len(closes)))
-            ema200 = ema(closes, 200) if len(closes) >= 200 else ema(closes, min(200, len(closes)))
+            ema50 = (
+                ema(closes[-60:], 50)
+                if len(closes) >= 60
+                else ema(closes, min(50, len(closes)))
+            )
+            ema200 = (
+                ema(closes, 200)
+                if len(closes) >= 200
+                else ema(closes, min(200, len(closes)))
+            )
             if ema50 and ema200:
                 trend = "Up" if ema50 > ema200 else "Down" if ema50 < ema200 else "Side"
             else:
@@ -235,11 +291,16 @@ def main():
             zone = zone_by_price(close, hi20, lo20, atr or 0.0)
 
             # H1 -> H4 -> RSI
-            h1 = safe_call(md.get_candles, figi=figi, from_=B_h1_from, to=now,
-                           interval=CandleInterval.CANDLE_INTERVAL_HOUR).candles
+            h1 = safe_call(
+                md.get_candles,
+                figi=figi,
+                from_=B_h1_from,
+                to=now,
+                interval=CandleInterval.CANDLE_INTERVAL_HOUR,
+            ).candles
             if len(h1) >= 80:
                 h1cl = [q2f(c.close) for c in h1]
-                h4 = [sum(h1cl[i:i + 4]) / 4 for i in range(0, len(h1cl) - 3, 4)]
+                h4 = [sum(h1cl[i : i + 4]) / 4 for i in range(0, len(h1cl) - 3, 4)]
                 rsi_h4 = rsi(h4, 14)
             else:
                 rsi_h4 = None
@@ -269,20 +330,24 @@ def main():
             if cost_r > 0.20:
                 continue
 
-            out_rows.append({
-                "Ticker": ticker,
-                "Class": klass,
-                "Liquidity (20d turnover)": f"{liq_val:.0f}",
-                "Spread (%)": f"{spread_pct:.3f}",
-                "All-in cost (bps)": f"{all_in_bps:.1f}",
-                "ATR% (D1)": f"{atr_pct:.2f}",
-                "Trend (D1)": trend,
-                "Zone": zone,
-                "RSI (H4)": f"{(rsi_h4 if rsi_h4 is not None else 0):.1f}",
-                "Scenario": "trend-break/retest" if trend != "Side" else "range-play",
-                "Cost/R": f"{cost_r:.3f}",
-                "Verdict": "PASS"
-            })
+            out_rows.append(
+                {
+                    "Ticker": ticker,
+                    "Class": klass,
+                    "Liquidity (20d turnover)": f"{liq_val:.0f}",
+                    "Spread (%)": f"{spread_pct:.3f}",
+                    "All-in cost (bps)": f"{all_in_bps:.1f}",
+                    "ATR% (D1)": f"{atr_pct:.2f}",
+                    "Trend (D1)": trend,
+                    "Zone": zone,
+                    "RSI (H4)": f"{(rsi_h4 if rsi_h4 is not None else 0):.1f}",
+                    "Scenario": "trend-break/retest"
+                    if trend != "Side"
+                    else "range-play",
+                    "Cost/R": f"{cost_r:.3f}",
+                    "Verdict": "PASS",
+                }
+            )
 
         # --- ЭТАП B2: лёгкая обработка остальных (без H1 и без стакана) ---
         for liq_val, it, close_A, atrpct_A, hi20_A, lo20_A in pre_light:
@@ -290,8 +355,13 @@ def main():
             ticker = it["ticker"]
             klass = it["class"]
 
-            d1 = safe_call(md.get_candles, figi=figi, from_=B_d1_from, to=now,
-                           interval=CandleInterval.CANDLE_INTERVAL_DAY).candles
+            d1 = safe_call(
+                md.get_candles,
+                figi=figi,
+                from_=B_d1_from,
+                to=now,
+                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+            ).candles
             if len(d1) < 60:
                 continue
 
@@ -301,11 +371,23 @@ def main():
             close = closes[-1]
 
             n = min(14, len(d1) - 1)
-            atr = (sum([highs[-i] - lows[-i] for i in range(1, n + 1)]) / n) if n > 0 else 0.0
+            atr = (
+                (sum([highs[-i] - lows[-i] for i in range(1, n + 1)]) / n)
+                if n > 0
+                else 0.0
+            )
             atr_pct = (atr / close * 100.0) if close else atrpct_A
 
-            ema50 = ema(closes[-60:], 50) if len(closes) >= 60 else ema(closes, min(50, len(closes)))
-            ema200 = ema(closes, 200) if len(closes) >= 200 else ema(closes, min(200, len(closes)))
+            ema50 = (
+                ema(closes[-60:], 50)
+                if len(closes) >= 60
+                else ema(closes, min(50, len(closes)))
+            )
+            ema200 = (
+                ema(closes, 200)
+                if len(closes) >= 200
+                else ema(closes, min(200, len(closes)))
+            )
             if ema50 and ema200:
                 trend = "Up" if ema50 > ema200 else "Down" if ema50 < ema200 else "Side"
             else:
@@ -330,27 +412,45 @@ def main():
             if cost_r > 0.20:
                 continue
 
-            out_rows.append({
-                "Ticker": ticker,
-                "Class": klass,
-                "Liquidity (20d turnover)": f"{liq_val:.0f}",
-                "Spread (%)": f"{spread_pct:.3f}",
-                "All-in cost (bps)": f"{all_in_bps:.1f}",
-                "ATR% (D1)": f"{atr_pct:.2f}",
-                "Trend (D1)": trend,
-                "Zone": zone,
-                "RSI (H4)": f"{0.0:.1f}",
-                "Scenario": "trend-break/retest" if trend != "Side" else "range-play",
-                "Cost/R": f"{cost_r:.3f}",
-                "Verdict": "PASS"
-            })
+            out_rows.append(
+                {
+                    "Ticker": ticker,
+                    "Class": klass,
+                    "Liquidity (20d turnover)": f"{liq_val:.0f}",
+                    "Spread (%)": f"{spread_pct:.3f}",
+                    "All-in cost (bps)": f"{all_in_bps:.1f}",
+                    "ATR% (D1)": f"{atr_pct:.2f}",
+                    "Trend (D1)": trend,
+                    "Zone": zone,
+                    "RSI (H4)": f"{0.0:.1f}",
+                    "Scenario": "trend-break/retest"
+                    if trend != "Side"
+                    else "range-play",
+                    "Cost/R": f"{cost_r:.3f}",
+                    "Verdict": "PASS",
+                }
+            )
 
     # сортировка: по ликвидности (desc), затем по Cost/R (asc)
-    out_rows.sort(key=lambda x: (-float(x["Liquidity (20d turnover)"]), float(x["Cost/R"])))
+    out_rows.sort(
+        key=lambda x: (-float(x["Liquidity (20d turnover)"]), float(x["Cost/R"]))
+    )
 
     os.makedirs("out", exist_ok=True)
-    fields = ["Ticker","Class","Liquidity (20d turnover)","Spread (%)","All-in cost (bps)",
-              "ATR% (D1)","Trend (D1)","Zone","RSI (H4)","Scenario","Cost/R","Verdict"]
+    fields = [
+        "Ticker",
+        "Class",
+        "Liquidity (20d turnover)",
+        "Spread (%)",
+        "All-in cost (bps)",
+        "ATR% (D1)",
+        "Trend (D1)",
+        "Zone",
+        "RSI (H4)",
+        "Scenario",
+        "Cost/R",
+        "Verdict",
+    ]
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
@@ -359,6 +459,6 @@ def main():
 
     print(f"Live candidates: {len(out_rows)} → {OUT_CSV}")
 
+
 if __name__ == "__main__":
     main()
-
