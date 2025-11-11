@@ -1,3 +1,4 @@
+from uuid import uuid4
 # stop_manager.py
 
 import os
@@ -104,33 +105,32 @@ def place_stop_orders():
                 stop_price = decimal_to_quotation(stop)
                 price = decimal_to_quotation(entry)
 
-                sl_order = post_order_safe_sync(client, 
-                    order_id=str(__import__("uuid").uuid4())).uuid4())).timestamp()}",
+                sl_order = post_order_safe_sync(
+                    client,
+                    account_id=ACCOUNT_ID,
                     figi=figi,
                     quantity=qty,
                     direction=direction,
-                    account_id=ACCOUNT_ID,
                     order_type=OrderType.ORDER_TYPE_STOP_LIMIT,
                     price=price,
-                    stop_price=stop_price
+                    stop_price=stop_price,
+                    order_id=str(uuid4(),
                 )
-                sl_order_id=str(__import__("uuid").uuid4())).uuid4())
 
                 # === Take Profit ===
                 tp_direction = direction
                 tp_price = decimal_to_quotation(target)
 
-                tp_order = post_order_safe_sync(client, 
-                    order_id=str(__import__("uuid").uuid4())).uuid4())).timestamp()}",
+                tp_order = post_order_safe_sync(
+                    client,
+                    account_id=ACCOUNT_ID,
                     figi=figi,
                     quantity=qty,
                     direction=tp_direction,
-                    account_id=ACCOUNT_ID,
                     order_type=OrderType.ORDER_TYPE_LIMIT,
-                    price=tp_price
+                    price=tp_price,
+                    order_id=str(uuid4(),
                 )
-                tp_order_id=str(__import__("uuid").uuid4())).uuid4())
-
                 placed_rows.append({
                     "ticker": ticker,
                     "figi": figi,

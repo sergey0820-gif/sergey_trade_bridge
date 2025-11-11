@@ -13,7 +13,9 @@ ACCOUNT_ID = os.getenv("TINKOFF_ACCOUNT_ID")
 TICKER = "GAZP"
 CLASS_CODE = "TQBR"
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)8s | %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s | %(levelname)8s | %(message)s"
+)
 
 with Client(TOKEN) as client:
     logging.info("📥 Получаем портфель по счёту: %s", ACCOUNT_ID)
@@ -23,18 +25,27 @@ with Client(TOKEN) as client:
     for p in portfolio.positions:
         figi = p.figi
         qty = p.quantity.units + p.quantity.nano / 1e9
-        instr = client.instruments.get_instrument_by(id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI, id=figi).instrument
-        logging.info("🔸 %s (%s) | figi=%s | qty=%.2f", instr.name, instr.ticker, figi, qty)
+        instr = client.instruments.get_instrument_by(
+            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI, id=figi
+        ).instrument
+        logging.info(
+            "🔸 %s (%s) | figi=%s | qty=%.2f", instr.name, instr.ticker, figi, qty
+        )
 
     logging.info("🔍 Получаем инструмент: %s (%s)", TICKER, CLASS_CODE)
     instr = client.instruments.get_instrument_by(
         id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
         class_code=CLASS_CODE,
-        id=TICKER
+        id=TICKER,
     ).instrument
 
-    logging.info("✔️ Инструмент найден: %s | figi=%s | lot=%s | min_price_increment=%s", 
-                 instr.name, instr.figi, instr.lot, instr.min_price_increment)
+    logging.info(
+        "✔️ Инструмент найден: %s | figi=%s | lot=%s | min_price_increment=%s",
+        instr.name,
+        instr.figi,
+        instr.lot,
+        instr.min_price_increment,
+    )
 
     logging.info("📈 Получаем цену инструмента...")
     prices = client.market_data.get_last_prices(figi=[instr.figi])
@@ -51,4 +62,3 @@ with Client(TOKEN) as client:
         logging.info("✅ Позиция найдена: %.2f лотов", qty)
     else:
         logging.warning("❌ Позиция не найдена в портфеле")
-

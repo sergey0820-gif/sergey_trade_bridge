@@ -33,65 +33,73 @@ UNIVERSE = [
     ("SBER", "stock"),
     ("GAZP", "stock"),
     ("LKOH", "stock"),
-    ("RI",   "futures"),  # RTS индекс (ближайший контракт)
-    ("Si",   "futures"),  # USD/RUB (ближайший контракт)
+    ("RI", "futures"),  # RTS индекс (ближайший контракт)
+    ("Si", "futures"),  # USD/RUB (ближайший контракт)
 ]
 MONTHS = 3
 INITIAL_CAPITAL = 100_000.0
-RISK_PCT = 0.02                 # риск ≤ 2% капитала
-STOCK_COST_BPS = 25.0           # ~0.25% RT для акций (комиссия+биржа+спред)
-FUT_COST_BPS   = 12.0           # ~0.12% RT для фьючерсов (тик-эквивалент)
+RISK_PCT = 0.02  # риск ≤ 2% капитала
+STOCK_COST_BPS = 25.0  # ~0.25% RT для акций (комиссия+биржа+спред)
+FUT_COST_BPS = 12.0  # ~0.12% RT для фьючерсов (тик-эквивалент)
 COSTR_MAX = 0.20
-TRADE_HOURS_UTC = (6, 16)       # фильтр торговых окон для MOEX (06:00..16:59 UTC ~ 09:00..19:59 МСК)
+TRADE_HOURS_UTC = (
+    6,
+    16,
+)  # фильтр торговых окон для MOEX (06:00..16:59 UTC ~ 09:00..19:59 МСК)
+
 
 # ---------- Утилиты ----------
 def ema(values, period):
     if len(values) < period:
         return None
-    k = 2/(period+1)
+    k = 2 / (period + 1)
     e = sum(values[:period]) / period
     for v in values[period:]:
-        e = v*k + e*(1-k)
+        e = v * k + e * (1 - k)
     return e
+
 
 def rsi_from_closes(closes, period=14):
     if len(closes) < period + 1:
         return None
     gains, losses = [], []
     for i in range(1, len(closes)):
-        ch = closes[i] - closes[i-1]
+        ch = closes[i] - closes[i - 1]
         gains.append(max(ch, 0.0))
         losses.append(max(-ch, 0.0))
     avg_gain = sum(gains[:period]) / period
     avg_loss = sum(losses[:period]) / period
     for i in range(period, len(gains)):
-        avg_gain = (avg_gain*(period-1) + gains[i]) / period
-        avg_loss = (avg_loss*(period-1) + losses[i]) / period
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
     return 100.0 - (100.0 / (1.0 + rs))
 
+
 def quotation_to_float(q):
-    return q.units + q.nano/1e9
+    return q.units + q.nano / 1e9
+
 
 def synth_h4_from_30m(candles_30m):
     """Сшиваем 8×30m в одну «виртуальную H4»."""
     if not candles_30m:
         return None
-    opens  = [quotation_to_float(c.open)  for c in candles_30m]
-    highs  = [quotation_to_float(c.high)  for c in candles_30m]
-    lows   = [quotation_to_float(c.low)   for c in candles_30m]
+    opens = [quotation_to_float(c.open) for c in candles_30m]
+    highs = [quotation_to_float(c.high) for c in candles_30m]
+    lows = [quotation_to_float(c.low) for c in candles_30m]
     closes = [quotation_to_float(c.close) for c in candles_30m]
-    vol    = sum([c.volume for c in candles_30m])
+    vol = sum([c.volume for c in candles_30m])
     return {
-        "open":  opens[0],
-        "high":  max(highs),
-        "low":   min(lows),
+        "open": opens[0],
+        "high": max(highs),
+        "low": min(lows),
         "close": closes[-1],
         "volume": vol,
         "ts": candles_30m[-1].time,  # конец окна
     }
+
 
 def detect_h4_trigger(curr, prev):
     """
@@ -104,15 +112,17 @@ def detect_h4_trigger(curr, prev):
         return None
     o1, c1, h1, l1 = prev["open"], prev["close"], prev["high"], prev["low"]
     o2, c2, h2, l2 = curr["open"], curr["close"], curr["high"], curr["low"]
-    body1, body2 = abs(c1-o1), abs(c2-o2)
+    body1, body2 = abs(c1 - o1), abs(c2 - o2)
     rng2 = max(h2 - l2, 0.0)
 
     # 1) Engulfing (упрощённо по телам)
     if body1 > 0 and body2 > 0:
         bull = (c2 > o2) and (o2 <= c1 <= c2) and (o1 >= l2)
         bear = (c2 < o2) and (o2 >= c1 >= c2) and (o1 <= h2)
-        if bull: return "engulfing_bull"
-        if bear: return "engulfing_bear"
+        if bull:
+            return "engulfing_bull"
+        if bear:
+            return "engulfing_bear"
 
     # 2) Break (импульс: закрытие за high/low предыдущей)
     if c2 > h1:
@@ -121,18 +131,20 @@ def detect_h4_trigger(curr, prev):
         return "break_down"
 
     # 3) Pin-bar (малое тело, длинная тень >60%)
-    if rng2 > 0 and body2/rng2 < 0.25:
+    if rng2 > 0 and body2 / rng2 < 0.25:
         upper = h2 - max(c2, o2)
         lower = min(c2, o2) - l2
-        if lower/rng2 > 0.6:
+        if lower / rng2 > 0.6:
             return "pin_bull"
-        if upper/rng2 > 0.6:
+        if upper / rng2 > 0.6:
             return "pin_bear"
 
     return None
 
+
 def cost_bps(asset_class):
     return FUT_COST_BPS if asset_class == "futures" else STOCK_COST_BPS
+
 
 def cost_r_ok(asset_class, planned_move_pct):
     """planned_move_pct — в ПРЦЕНТАХ, напр. 3.0 = 3%."""
@@ -141,6 +153,7 @@ def cost_r_ok(asset_class, planned_move_pct):
     if move_bps <= 0:
         return False
     return (bps / move_bps) <= COSTR_MAX
+
 
 # ---------- Работа с API ----------
 def find_instrument_figi(api: Client, ticker: str, cls: str):
@@ -160,34 +173,47 @@ def find_instrument_figi(api: Client, ticker: str, cls: str):
         cands.sort(key=lambda x: x.expiration_date or now())
         return cands[0].figi
 
+
 def fetch_d1(api: Client, figi: str, since: datetime, to: datetime):
-    cs = api.market_data.get_candles(figi=figi, from_=since, to=to,
-                                     interval=CandleInterval.CANDLE_INTERVAL_DAY).candles
+    cs = api.market_data.get_candles(
+        figi=figi, from_=since, to=to, interval=CandleInterval.CANDLE_INTERVAL_DAY
+    ).candles
     bars = []
     for c in cs:
-        bars.append({
-            "ts": c.time,
-            "open":  quotation_to_float(c.open),
-            "high":  quotation_to_float(c.high),
-            "low":   quotation_to_float(c.low),
-            "close": quotation_to_float(c.close),
-        })
+        bars.append(
+            {
+                "ts": c.time,
+                "open": quotation_to_float(c.open),
+                "high": quotation_to_float(c.high),
+                "low": quotation_to_float(c.low),
+                "close": quotation_to_float(c.close),
+            }
+        )
     return bars
+
 
 def fetch_30m_day(api: Client, figi: str, day_utc):
     """Все 30m свечи за сутки (UTC), с фильтром торговых часов MOEX."""
-    day_start = datetime(day_utc.year, day_utc.month, day_utc.day, 0, 0, tzinfo=timezone.utc)
-    day_end   = day_start + timedelta(days=1)
-    cs = api.market_data.get_candles(figi=figi, from_=day_start, to=day_end,
-                                     interval=CandleInterval.CANDLE_INTERVAL_30_MIN).candles
+    day_start = datetime(
+        day_utc.year, day_utc.month, day_utc.day, 0, 0, tzinfo=timezone.utc
+    )
+    day_end = day_start + timedelta(days=1)
+    cs = api.market_data.get_candles(
+        figi=figi,
+        from_=day_start,
+        to=day_end,
+        interval=CandleInterval.CANDLE_INTERVAL_30_MIN,
+    ).candles
     low_h, high_h = TRADE_HOURS_UTC
     filtered = [c for c in cs if low_h <= c.time.hour <= high_h]
     return filtered
 
+
 def iter_dynamic_h4_windows(candles_30m):
     """Генератор виртуальных H4 окон (8×30m), скользящий шаг — 30 минут."""
-    for i in range(8, len(candles_30m)+1):
-        yield candles_30m[i-8:i]
+    for i in range(8, len(candles_30m) + 1):
+        yield candles_30m[i - 8 : i]
+
 
 # ---------- Бэктест символа ----------
 def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
@@ -215,13 +241,13 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
     equity = capital
 
     # Идём по дням D1: для каждого дня — все 30m, затем скользящие окна 8×30m
-    for i in range(trend_period+1, len(d1)):
+    for i in range(trend_period + 1, len(d1)):
         d = d1[i]
         day = d["ts"].date()
         price_d1_close = d["close"]
 
         # тренд D1 на этот день — EMA по окну до текущего бара
-        sub = closes[i-trend_period:i]
+        sub = closes[i - trend_period : i]
         trend_ema = ema(sub, trend_period)
         if trend_ema is None:
             continue
@@ -230,7 +256,7 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
 
         # Ограничение: акции — только long; фьючи — long/short
         allow_long = True
-        allow_short = (cls == "futures")
+        allow_short = cls == "futures"
 
         # Получаем все 30m свечи за этот день
         c30 = fetch_30m_day(api, figi, d["ts"])
@@ -261,8 +287,8 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
                 continue
 
             # Направление сигнала
-            long_sig  = trig in ("engulfing_bull", "break_up",  "pin_bull")
-            short_sig = trig in ("engulfing_bear","break_down","pin_bear")
+            long_sig = trig in ("engulfing_bull", "break_up", "pin_bull")
+            short_sig = trig in ("engulfing_bear", "break_down", "pin_bear")
 
             # Фильтр тренда D1 + запрет шорта для акций
             if long_sig and not up_trend:
@@ -276,15 +302,15 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
             if long_sig:
                 stop = min(curr["low"], prev_synth["low"])
                 atr_like = (curr["high"] - curr["low"]) * 0.5
-                stop = min(stop, entry - atr_like*0.5)
-                target = entry + 2*(entry - stop)
-                planned_move_pct = (target/entry - 1.0)*100.0
+                stop = min(stop, entry - atr_like * 0.5)
+                target = entry + 2 * (entry - stop)
+                planned_move_pct = (target / entry - 1.0) * 100.0
             else:
                 stop = max(curr["high"], prev_synth["high"])
                 atr_like = (curr["high"] - curr["low"]) * 0.5
-                stop = max(stop, entry + atr_like*0.5)
-                target = entry - 2*(stop - entry)
-                planned_move_pct = (1.0 - target/entry)*100.0
+                stop = max(stop, entry + atr_like * 0.5)
+                target = entry - 2 * (stop - entry)
+                planned_move_pct = (1.0 - target / entry) * 100.0
 
             # Cost/R фильтр
             if not cost_r_ok(cls, planned_move_pct):
@@ -301,9 +327,13 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
 
             # Симуляция исхода: ищем TP/SL в следующих 2 календарных днях на 30m
             start_sim = curr["ts"]
-            end_sim   = start_sim + timedelta(days=2)
-            cs = api.market_data.get_candles(figi=figi, from_=start_sim, to=end_sim,
-                                             interval=CandleInterval.CANDLE_INTERVAL_30_MIN).candles
+            end_sim = start_sim + timedelta(days=2)
+            cs = api.market_data.get_candles(
+                figi=figi,
+                from_=start_sim,
+                to=end_sim,
+                interval=CandleInterval.CANDLE_INTERVAL_30_MIN,
+            ).candles
             time.sleep(0.1)
 
             hit = "none"
@@ -311,11 +341,19 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
                 hi = quotation_to_float(c.high)
                 lo = quotation_to_float(c.low)
                 if long_sig:
-                    if lo <= stop:         hit = "SL"; break
-                    if hi >= target:       hit = "TP"; break
+                    if lo <= stop:
+                        hit = "SL"
+                        break
+                    if hi >= target:
+                        hit = "TP"
+                        break
                 else:
-                    if hi >= stop:         hit = "SL"; break
-                    if lo <= target:       hit = "TP"; break
+                    if hi >= stop:
+                        hit = "SL"
+                        break
+                    if lo <= target:
+                        hit = "TP"
+                        break
 
             if hit == "TP":
                 exit_price = target
@@ -333,14 +371,21 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
             pnl -= entry * size * rt_cost
 
             equity += pnl
-            trades.append({
-                "date": curr["ts"].isoformat(),
-                "ticker": ticker, "class": cls,
-                "signal": "long" if long_sig else "short",
-                "trig": trig,
-                "entry": entry, "stop": stop, "target": target,
-                "exit": exit_price, "pnl": pnl, "size": size
-            })
+            trades.append(
+                {
+                    "date": curr["ts"].isoformat(),
+                    "ticker": ticker,
+                    "class": cls,
+                    "signal": "long" if long_sig else "short",
+                    "trig": trig,
+                    "entry": entry,
+                    "stop": stop,
+                    "target": target,
+                    "exit": exit_price,
+                    "pnl": pnl,
+                    "size": size,
+                }
+            )
 
         # Переход к следующему дню
     # --- Метрики ---
@@ -363,9 +408,14 @@ def backtest_symbol(api: Client, ticker: str, cls: str, capital: float):
             avg_r = sum(rs) / len(rs)
 
     return {
-        "ticker": ticker, "class": cls, "trades": trades,
-        "win_rate": win_rate, "avg_r": avg_r, "final_equity": equity
+        "ticker": ticker,
+        "class": cls,
+        "trades": trades,
+        "win_rate": win_rate,
+        "avg_r": avg_r,
+        "final_equity": equity,
     }
+
 
 # ---------- main ----------
 def main():
@@ -389,21 +439,51 @@ def main():
             path = os.path.join(out_dir, f"bt_{ticker}.csv")
             with open(path, "w", newline="") as f:
                 w = csv.writer(f)
-                w.writerow(["date","ticker","class","signal","trig","entry","stop","target","exit","pnl","size"])
+                w.writerow(
+                    [
+                        "date",
+                        "ticker",
+                        "class",
+                        "signal",
+                        "trig",
+                        "entry",
+                        "stop",
+                        "target",
+                        "exit",
+                        "pnl",
+                        "size",
+                    ]
+                )
                 for t in res["trades"]:
-                    w.writerow([
-                        t["date"], t["ticker"], t["class"], t["signal"], t["trig"],
-                        f"{t['entry']:.6f}", f"{t['stop']:.6f}", f"{t['target']:.6f}",
-                        f"{t['exit']:.6f}", f"{t['pnl']:.2f}", t["size"]
-                    ])
+                    w.writerow(
+                        [
+                            t["date"],
+                            t["ticker"],
+                            t["class"],
+                            t["signal"],
+                            t["trig"],
+                            f"{t['entry']:.6f}",
+                            f"{t['stop']:.6f}",
+                            f"{t['target']:.6f}",
+                            f"{t['exit']:.6f}",
+                            f"{t['pnl']:.2f}",
+                            t["size"],
+                        ]
+                    )
 
-            print(f"[{ticker}] trades={len(res['trades'])}, win_rate={res['win_rate']:.1f}%, avg_R={res['avg_r']}, equity={res['final_equity']:.2f}")
-            summary_rows.append([
-                ticker, cls, len(res["trades"]),
-                f"{res['win_rate']:.1f}%",
-                f"{res['avg_r'] if res['avg_r'] is not None else 'n/a'}",
-                f"{res['final_equity']:.2f}"
-            ])
+            print(
+                f"[{ticker}] trades={len(res['trades'])}, win_rate={res['win_rate']:.1f}%, avg_R={res['avg_r']}, equity={res['final_equity']:.2f}"
+            )
+            summary_rows.append(
+                [
+                    ticker,
+                    cls,
+                    len(res["trades"]),
+                    f"{res['win_rate']:.1f}%",
+                    f"{res['avg_r'] if res['avg_r'] is not None else 'n/a'}",
+                    f"{res['final_equity']:.2f}",
+                ]
+            )
 
             # мягкий троттлинг между символами
             time.sleep(0.3)
@@ -411,10 +491,11 @@ def main():
     # Сводка
     with open(os.path.join(out_dir, "bt_summary.csv"), "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["ticker","class","trades","win_rate","avg_R","final_equity"])
+        w.writerow(["ticker", "class", "trades", "win_rate", "avg_R", "final_equity"])
         w.writerows(summary_rows)
 
     print("\nDone. See out/bt_summary.csv")
+
 
 if __name__ == "__main__":
     main()

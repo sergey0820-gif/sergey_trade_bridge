@@ -24,6 +24,7 @@ TOKEN = os.getenv("TINKOFF_TOKEN")
 OUTPUT_CSV = "universe.csv"
 DAYS = 7  # сокращаем период до 7, чтобы не было INVALID_ARGUMENT
 
+
 # === Подсчёт ATR ===
 def calculate_atr(candles):
     if not candles or len(candles) < 2:
@@ -39,6 +40,7 @@ def calculate_atr(candles):
     first_candle = candles[0]
     close_price = first_candle.close.units + first_candle.close.nano / 1e9
     return (avg_tr / close_price) * 100 if close_price > 0 else 0.0
+
 
 # === Сбор акций ===
 def fetch_shares(client):
@@ -78,16 +80,19 @@ def fetch_shares(client):
             logging.info(f"🔸 {share.ticker}: низкий ATR {atr:.2f}%")
             continue
 
-        results.append({
-            "figi": share.figi,
-            "ticker": share.ticker,
-            "name": share.name,
-            "avg_volume": round(avg_volume),
-            "atr_percent": round(atr, 2),
-            "asset_class": "share",
-            "class_code": "TQBR",
-        })
+        results.append(
+            {
+                "figi": share.figi,
+                "ticker": share.ticker,
+                "name": share.name,
+                "avg_volume": round(avg_volume),
+                "atr_percent": round(atr, 2),
+                "asset_class": "share",
+                "class_code": "TQBR",
+            }
+        )
     return results
+
 
 # === Сбор фьючерсов ===
 def fetch_futures(client):
@@ -124,16 +129,19 @@ def fetch_futures(client):
             logging.info(f"🔸 {fut.ticker}: низкий ATR {atr:.2f}%")
             continue
 
-        results.append({
-            "figi": fut.figi,
-            "ticker": fut.ticker,
-            "name": fut.name,
-            "avg_volume": round(avg_volume),
-            "atr_percent": round(atr, 2),
-            "asset_class": "future",
-            "class_code": "SPBFUT",
-        })
+        results.append(
+            {
+                "figi": fut.figi,
+                "ticker": fut.ticker,
+                "name": fut.name,
+                "avg_volume": round(avg_volume),
+                "atr_percent": round(atr, 2),
+                "asset_class": "future",
+                "class_code": "SPBFUT",
+            }
+        )
     return results
+
 
 # === Основная функция ===
 def main():
@@ -149,16 +157,24 @@ def main():
             return
 
         with open(OUTPUT_CSV, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=[
-                "figi", "ticker", "name", "avg_volume",
-                "atr_percent", "asset_class", "class_code"
-            ])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "figi",
+                    "ticker",
+                    "name",
+                    "avg_volume",
+                    "atr_percent",
+                    "asset_class",
+                    "class_code",
+                ],
+            )
             writer.writeheader()
             writer.writerows(total)
 
         logging.info(f"✅ Сохранено: {len(total)} инструментов → {OUTPUT_CSV}")
 
+
 # === Точка входа ===
 if __name__ == "__main__":
     main()
-

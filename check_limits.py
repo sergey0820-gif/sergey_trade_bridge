@@ -6,8 +6,10 @@ load_dotenv()
 TOKEN = os.getenv("TINKOFF_TOKEN")
 FIGI = "BBG004730RP0"
 
+
 def to_float(q):
     return q.units + q.nano / 1e9
+
 
 with Client(TOKEN) as client:
     # Получаем минимальный шаг цены
@@ -23,4 +25,3 @@ with Client(TOKEN) as client:
     # Лимит безопасного TP (условный — на +7%)
     limit_up = round(current * 1.07, 2)
     print("📈 Безопасный лимит вверх (+7%):", limit_up)
-

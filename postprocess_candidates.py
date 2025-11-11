@@ -22,6 +22,7 @@ LEVELS_RE = re.compile(
     re.IGNORECASE,
 )
 
+
 def parse_levels(levels: str) -> Optional[Tuple[float, float, float]]:
     if not levels:
         return None
@@ -31,17 +32,20 @@ def parse_levels(levels: str) -> Optional[Tuple[float, float, float]]:
     e, s, t = map(float, m.groups())
     return e, s, t
 
+
 def q2f(q):
     # безопасный перевод Quotation -> float
     if q is None:
         return None
-    return float(getattr(q, "units", 0) + getattr(q, "nano", 0)/1e9)
+    return float(getattr(q, "units", 0) + getattr(q, "nano", 0) / 1e9)
+
 
 def safe_float(x, default=None):
     try:
         return float(x)
     except Exception:
         return default
+
 
 # --- загрузка позиций ---
 def load_open_position_figis(cli, account_id: str) -> set:
@@ -62,13 +66,14 @@ def load_open_position_figis(cli, account_id: str) -> set:
         print(f"[WARN] load_open_position_figis: {e}", file=sys.stderr)
     return open_figis
 
+
 # --- резолв тикер+класс -> (figi, name) ---
 def resolve_instrument(cli, ticker: str, class_code: str) -> Optional[Tuple[str, str]]:
     try:
         ins = cli.instruments.get_instrument_by(
             id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
             class_code=class_code,
-            id=ticker
+            id=ticker,
         ).instrument
         figi = getattr(ins, "figi", "") or ""
         name = getattr(ins, "name", "") or ticker
@@ -78,6 +83,7 @@ def resolve_instrument(cli, ticker: str, class_code: str) -> Optional[Tuple[str,
         # не свалимся, просто пропустим name/figi
         print(f"[RESOLVE] {ticker}/{class_code}: {e}", file=sys.stderr)
     return None
+
 
 # --- вытягиваем последние цены пачкой ---
 def fetch_last_prices(cli, figis: List[str]) -> Dict[str, float]:
@@ -95,6 +101,7 @@ def fetch_last_prices(cli, figis: List[str]) -> Dict[str, float]:
         print(f"[WARN] fetch_last_prices: {e}", file=sys.stderr)
     return out
 
+
 def process_file(cli, account_id: str, path: Path):
     if not path.exists():
         return
@@ -106,7 +113,7 @@ def process_file(cli, account_id: str, path: Path):
     # 1) резолвим FIGI/Name
     figi_map: Dict[Tuple[str, str], Tuple[str, str]] = {}
     for r in src_rows:
-        t = (r.get("ticker","").strip(), r.get("class","").strip())
+        t = (r.get("ticker", "").strip(), r.get("class", "").strip())
         if not t[0] or not t[1]:
             continue
         if t not in figi_map:
@@ -123,10 +130,10 @@ def process_file(cli, account_id: str, path: Path):
 
     # 4) соберём обогащённые строки
     for r in src_rows:
-        pass_flag = (r.get("pass","").strip().upper() == "YES")
-        ticker = r.get("ticker","").strip()
-        class_code = r.get("class","").strip()
-        levels = r.get("levels","")
+        pass_flag = r.get("pass", "").strip().upper() == "YES"
+        ticker = r.get("ticker", "").strip()
+        class_code = r.get("class", "").strip()
+        levels = r.get("levels", "")
         parsed = parse_levels(levels)
         name = ""
         figi = ""
@@ -142,7 +149,7 @@ def process_file(cli, account_id: str, path: Path):
         last = last_by_figi.get(figi, None)
         dev_pct = None
         if last and entry:
-            dev_pct = abs(last/entry - 1.0) * 100.0  # в %
+            dev_pct = abs(last / entry - 1.0) * 100.0  # в %
 
         # Verdict:
         # - если уже в позиции → HOLD
@@ -159,14 +166,16 @@ def process_file(cli, account_id: str, path: Path):
             # слишком далеко от входа — точка ушла
             continue
 
-        rows.append({
-            **r,
-            "Name": name,
-            "FIGI": figi,
-            "Last": f"{last:.6f}" if last else "",
-            "DeviationPct": f"{dev_pct:.3f}" if dev_pct is not None else "",
-            "Verdict": verdict,
-        })
+        rows.append(
+            {
+                **r,
+                "Name": name,
+                "FIGI": figi,
+                "Last": f"{last:.6f}" if last else "",
+                "DeviationPct": f"{dev_pct:.3f}" if dev_pct is not None else "",
+                "Verdict": verdict,
+            }
+        )
 
     # 5) запишем .enriched.csv
     out_path = path.with_suffix(".enriched.csv")
@@ -179,16 +188,35 @@ def process_file(cli, account_id: str, path: Path):
         print(f"[OK] {path.name} → {out_path.name} ({len(rows)} rows)")
     else:
         # создадим пустой файл с заголовком
-        header = ["ts","ticker","class","trend_d1","zone","rsi_h4","scenario","recommendation","levels","all_in_bps","cost_r","pass","Name","FIGI","Last","DeviationPct","Verdict"]
+        header = [
+            "ts",
+            "ticker",
+            "class",
+            "trend_d1",
+            "zone",
+            "rsi_h4",
+            "scenario",
+            "recommendation",
+            "levels",
+            "all_in_bps",
+            "cost_r",
+            "pass",
+            "Name",
+            "FIGI",
+            "Last",
+            "DeviationPct",
+            "Verdict",
+        ]
         with out_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(header)
         print(f"[OK] {path.name} → {out_path.name} (0 rows)")
 
+
 def main():
-    load_dotenv(BASE/".env")
+    load_dotenv(BASE / ".env")
     token = os.getenv("TINKOFF_TOKEN") or os.getenv("TINKOFF_INVEST_TOKEN")
-    account_id = os.getenv("TINKOFF_ACCOUNT_ID","")
+    account_id = os.getenv("TINKOFF_ACCOUNT_ID", "")
     if not token:
         print("ERR: no TINKOFF token in .env", file=sys.stderr)
         sys.exit(1)
@@ -196,6 +224,7 @@ def main():
     with Client(token) as cli:
         for p in INPUTS:
             process_file(cli, account_id, p)
+
 
 if __name__ == "__main__":
     main()

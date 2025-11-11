@@ -3,6 +3,7 @@ from dotenv import dotenv_values
 from tinkoff.invest import AsyncClient, OrderDirection, OrderType
 from trade_utils.orders import post_order_safe
 
+
 async def main():
     cfg = dotenv_values(".env")
     async with AsyncClient(cfg["TINKOFF_TOKEN"]) as c:
@@ -17,6 +18,7 @@ async def main():
             dry_run=True,  # 🔒 только проверки, без фактического постинга
         )
         print("DRY-RUN OK:", res)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

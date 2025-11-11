@@ -17,11 +17,13 @@ load_dotenv(dotenv_path=ENV_PATH)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 
+
 def safe_float(x, default=0.0):
     try:
         return float(str(x).replace(",", "."))
     except Exception:
         return default
+
 
 def read_positions(pth: Path):
     res = []
@@ -36,10 +38,13 @@ def read_positions(pth: Path):
                 avg = safe_float(row.get("avg_price", 0))
                 last = safe_float(row.get("market_price", 0))
                 pnl = (last - avg) * qty
-                res.append({"ticker": ticker, "qty": qty, "avg": avg, "last": last, "pnl": pnl})
+                res.append(
+                    {"ticker": ticker, "qty": qty, "avg": avg, "last": last, "pnl": pnl}
+                )
             except Exception:
                 continue
     return res
+
 
 def read_operations_today(pth: Path):
     ops = []
@@ -51,6 +56,7 @@ def read_operations_today(pth: Path):
             ops.append(row)
     return ops
 
+
 def summarize():
     now_local = datetime.now(timezone.utc).astimezone()
     pos = read_positions(POS_CSV)
@@ -60,10 +66,14 @@ def summarize():
     total_unreal = sum(p["pnl"] for p in pos)
     # Сводка по позициям (топ-5 по абсолютному PnL)
     pos_sorted = sorted(pos, key=lambda x: abs(x["pnl"]), reverse=True)[:5]
-    pos_lines = [
-        f"{p['ticker']}: qty={int(p['qty']) if p['qty'].is_integer() else p['qty']}, avg={p['avg']:.2f}, last={p['last']:.2f}, PnL={p['pnl']:.2f}"
-        for p in pos_sorted
-    ] if pos_sorted else ["—"]
+    pos_lines = (
+        [
+            f"{p['ticker']}: qty={int(p['qty']) if p['qty'].is_integer() else p['qty']}, avg={p['avg']:.2f}, last={p['last']:.2f}, PnL={p['pnl']:.2f}"
+            for p in pos_sorted
+        ]
+        if pos_sorted
+        else ["—"]
+    )
 
     # Операции за сегодня
     ops_cnt = len(ops)
@@ -95,6 +105,7 @@ def summarize():
     ]
     return "\n".join(lines)
 
+
 async def main():
     if not BOT_TOKEN or not CHAT_ID:
         raise RuntimeError("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы в .env")
@@ -105,13 +116,17 @@ async def main():
 
     if OPS_CSV.exists() and OPS_CSV.stat().st_size > 0:
         try:
-            await bot.send_document(chat_id=CHAT_ID, document=FSInputFile(str(OPS_CSV)),
-                                    caption="operations_today.csv")
+            await bot.send_document(
+                chat_id=CHAT_ID,
+                document=FSInputFile(str(OPS_CSV)),
+                caption="operations_today.csv",
+            )
         except Exception:
             # тихо пропускаем вложение, если что-то не так
             pass
 
     await bot.session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

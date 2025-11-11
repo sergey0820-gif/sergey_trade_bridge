@@ -73,8 +73,18 @@ def read_pending_rows(path: str):
 
 def write_pending_rows(path: str, rows, fieldnames):
     must = [
-        "ts","ticker","figi","side","lots","entry","stop","target",
-        "status","sl_order_id","tp_order_id","error"
+        "ts",
+        "ticker",
+        "figi",
+        "side",
+        "lots",
+        "entry",
+        "stop",
+        "target",
+        "status",
+        "sl_order_id",
+        "tp_order_id",
+        "error",
     ]
     fieldnames = list(fieldnames or [])
     for k in must:
@@ -94,7 +104,7 @@ def s_int(x, default=0) -> int:
         return default
 
 
-def s_dec(x, default: Optional[Decimal]=None) -> Optional[Decimal]:
+def s_dec(x, default: Optional[Decimal] = None) -> Optional[Decimal]:
     try:
         return Decimal(str(x))
     except Exception:
@@ -113,8 +123,15 @@ def place_one_stop(
 ) -> str:
     """Унифицированный вызов для SL/TP (актуальная сигнатура SDK)."""
     if DRY:
-        logging.info("[DRY] stop %s %s qty=%s price=%s stop=%s figi=%s",
-                     stop_type.name, direction.name, quantity, price_dec, stop_price_dec, figi)
+        logging.info(
+            "[DRY] stop %s %s qty=%s price=%s stop=%s figi=%s",
+            stop_type.name,
+            direction.name,
+            quantity,
+            price_dec,
+            stop_price_dec,
+            figi,
+        )
         return "dry-order-id"
 
     resp = cli.stop_orders.post_stop_order(
@@ -135,7 +152,9 @@ def main():
     token = os.getenv("TINKOFF_TOKEN") or os.getenv("TINKOFF_INVEST_TOKEN")
     account_id = os.getenv("TINKOFF_ACCOUNT_ID")
     if not token or not account_id:
-        logging.error("Нет токена/аккаунта: TINKOFF_TOKEN / TINKOFF_INVEST_TOKEN и TINKOFF_ACCOUNT_ID")
+        logging.error(
+            "Нет токена/аккаунта: TINKOFF_TOKEN / TINKOFF_INVEST_TOKEN и TINKOFF_ACCOUNT_ID"
+        )
         return
 
     logging.info("stops_guard: started (dry=%s, interval=%ss)", DRY, SLEEP_SEC)
@@ -152,14 +171,14 @@ def main():
             with Client(token) as cli:
                 for r in rows:
                     status = (r.get("status") or "").strip().upper()
-                    if status in ("PLACED","DONE","CANCELLED"):
+                    if status in ("PLACED", "DONE", "CANCELLED"):
                         continue
 
                     figi = (r.get("figi") or "").strip()
                     side = (r.get("side") or "BUY").strip().upper()
                     lots = s_int(r.get("lots"), 0)
                     stop_dec = s_dec(r.get("stop"))
-                    tp_dec   = s_dec(r.get("target"))
+                    tp_dec = s_dec(r.get("target"))
                     # entry может пригодиться позже
                     # entry_dec = s_dec(r.get("entry"))
 
@@ -169,8 +188,11 @@ def main():
                         changed = True
                         continue
 
-                    direction = StopOrderDirection.STOP_ORDER_DIRECTION_SELL if side == "BUY" \
-                                else StopOrderDirection.STOP_ORDER_DIRECTION_BUY
+                    direction = (
+                        StopOrderDirection.STOP_ORDER_DIRECTION_SELL
+                        if side == "BUY"
+                        else StopOrderDirection.STOP_ORDER_DIRECTION_BUY
+                    )
 
                     # SL
                     if not (r.get("sl_order_id") or "").strip():
@@ -178,13 +200,23 @@ def main():
                             exec_price = stop_dec
                             trig_price = stop_dec
                             sl_id = place_one_stop(
-                                cli, account_id, figi, direction,
+                                cli,
+                                account_id,
+                                figi,
+                                direction,
                                 StopOrderType.STOP_ORDER_TYPE_STOP_LOSS,
-                                lots, exec_price, trig_price
+                                lots,
+                                exec_price,
+                                trig_price,
                             )
                             r["sl_order_id"] = sl_id
-                            logging.info("[OK] SL placed: figi=%s lots=%s stop=%s id=%s",
-                                         figi, lots, stop_dec, sl_id)
+                            logging.info(
+                                "[OK] SL placed: figi=%s lots=%s stop=%s id=%s",
+                                figi,
+                                lots,
+                                stop_dec,
+                                sl_id,
+                            )
                             changed = True
                         except (RequestError, grpc.RpcError, Exception) as e:
                             r["error"] = f"SL error: {e}"
@@ -196,13 +228,23 @@ def main():
                             exec_price = tp_dec
                             trig_price = tp_dec
                             tp_id = place_one_stop(
-                                cli, account_id, figi, direction,
+                                cli,
+                                account_id,
+                                figi,
+                                direction,
                                 StopOrderType.STOP_ORDER_TYPE_TAKE_PROFIT,
-                                lots, exec_price, trig_price
+                                lots,
+                                exec_price,
+                                trig_price,
                             )
                             r["tp_order_id"] = tp_id
-                            logging.info("[OK] TP placed: figi=%s lots=%s target=%s id=%s",
-                                         figi, lots, tp_dec, tp_id)
+                            logging.info(
+                                "[OK] TP placed: figi=%s lots=%s target=%s id=%s",
+                                figi,
+                                lots,
+                                tp_dec,
+                                tp_id,
+                            )
                             changed = True
                         except (RequestError, grpc.RpcError, Exception) as e:
                             r["error"] = f"TP error: {e}"

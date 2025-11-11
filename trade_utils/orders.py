@@ -1,17 +1,17 @@
 from __future__ import annotations
 from uuid import uuid4
-from decimal import Decimal, getcontext
+from decimal import getcontext
 from typing import Optional
 
 from tinkoff.invest import (
-    OrderType, OrderDirection,
+    OrderType,
+    OrderDirection,
     InstrumentIdType,
 )
-from tinkoff.invest.utils import quotation_to_decimal
-
 from trade_utils.uid_resolver import _resolve_uid
 
 getcontext().prec = 28  # безопасная точность для финансовых расчётов
+
 
 async def _is_api_tradable(c, uid: str) -> bool:
     """
@@ -24,6 +24,7 @@ async def _is_api_tradable(c, uid: str) -> bool:
     )
     inst = getattr(r, "instrument", None)
     return bool(inst and getattr(inst, "api_trade_available_flag", False))
+
 
 async def _trading_status_ok(c, uid: str) -> bool:
     """
@@ -39,6 +40,7 @@ async def _trading_status_ok(c, uid: str) -> bool:
         return any(k in name for k in ("NORMAL", "TRADING"))
     except Exception:
         return True  # не препятствуем, если проверка недоступна
+
 
 async def post_order_safe(
     c,
@@ -86,9 +88,11 @@ async def post_order_safe(
         quantity=int(qty_lots),
     )
 
+
 # Compatibility wrapper for sync code
 def post_order_safe_sync(*args, **kwargs):
     import asyncio
+
     # NB: asyncio.run() нельзя вызывать, если цикл уже запущен.
     # В обычных скриптах это безопасно.
     return asyncio.run(post_order_safe(*args, **kwargs))

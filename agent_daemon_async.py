@@ -23,20 +23,22 @@ import asyncio
 from typing import List
 
 from dotenv import load_dotenv
+
 # подключаем авто-подтверждение
 from auto_confirm import auto_confirm_csv
 
 # ---------- Конфиг/окружение ----------
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-OUT_DIR  = os.path.join(BASE_DIR, "out")
+OUT_DIR = os.path.join(BASE_DIR, "out")
 
-UNIVERSE_CSV       = os.path.join(OUT_DIR, "universe.csv")
-PUBLIC_CSV         = os.path.join(OUT_DIR, "live_candidates_public.csv")
-KI_CSV             = os.path.join(OUT_DIR, "live_candidates_ki.csv")
+UNIVERSE_CSV = os.path.join(OUT_DIR, "universe.csv")
+PUBLIC_CSV = os.path.join(OUT_DIR, "live_candidates_public.csv")
+KI_CSV = os.path.join(OUT_DIR, "live_candidates_ki.csv")
 
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 # ---------- Утилиты ----------
+
 
 def _csv_rows(path: str) -> List[dict]:
     """Прочитать CSV в список словарей; если файла нет — вернуть []."""
@@ -48,10 +50,13 @@ def _csv_rows(path: str) -> List[dict]:
     except Exception:
         return []
 
+
 def _ensure_out_dir() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
 
+
 # ---------- Главная ----------
+
 
 async def main() -> None:
     print("[agent] start")
@@ -61,7 +66,9 @@ async def main() -> None:
     # 1) Информационная проверка универса
     uni_rows = _csv_rows(UNIVERSE_CSV)
     if not uni_rows:
-        print("[agent] WARN: пустой out/universe.csv — агенту нечего постпроцессить (ждём sergey-scan.service)")
+        print(
+            "[agent] WARN: пустой out/universe.csv — агенту нечего постпроцессить (ждём sergey-scan.service)"
+        )
 
     # 2) Авто-подтверждение (если токен и данные корректны — confirm проставится)
     try:
@@ -74,9 +81,10 @@ async def main() -> None:
 
     # 3) Итоговые числа (просто количество строк в CSV после авто-подтверждения)
     public_rows = _csv_rows(PUBLIC_CSV)
-    ki_rows     = _csv_rows(KI_CSV)
+    ki_rows = _csv_rows(KI_CSV)
 
     print(f"[agent] done: public={len(public_rows)} ki={len(ki_rows)}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

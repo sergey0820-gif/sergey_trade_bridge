@@ -16,6 +16,7 @@ load_dotenv(dotenv_path=ENV_PATH)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 
+
 def build_summary(csv_path: Path, limit: int = 8) -> str:
     if not csv_path.exists() or csv_path.stat().st_size == 0:
         return "⚠️ Файл live_candidates.csv не найден или пуст."
@@ -45,6 +46,7 @@ def build_summary(csv_path: Path, limit: int = 8) -> str:
     ]
     return "\n".join(lines)
 
+
 async def main():
     if not BOT_TOKEN or not CHAT_ID:
         raise RuntimeError("Не заданы TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID в .env")
@@ -55,9 +57,10 @@ async def main():
         await bot.send_document(
             chat_id=CHAT_ID,
             document=FSInputFile(str(CSV_PATH)),
-            caption="live_candidates.csv"
+            caption="live_candidates.csv",
         )
     await bot.session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

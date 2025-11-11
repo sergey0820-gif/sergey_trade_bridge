@@ -18,13 +18,16 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s: %(message)s",
 )
 
+
 def log(msg):
     print(msg)
     logging.info(msg)
 
+
 def log_warning(msg):
     print(msg)
     logging.warning(msg)
+
 
 def main():
     log("⚙️ Запуск scan_live_full.py")
@@ -54,7 +57,7 @@ def main():
                 ticker=ticker,
                 class_code=class_code,
                 interval="day",
-                days=30  # ✅ передаём только один раз
+                days=30,  # ✅ передаём только один раз
             )
             if df is None or df.empty:
                 log_warning(f"⚠️ Нет данных для {ticker}")
@@ -63,11 +66,13 @@ def main():
             result = analyze_ticker_live(df, asset_class)
 
             if result:
-                result.update({
-                    "ticker": ticker,
-                    "class_code": class_code,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
+                result.update(
+                    {
+                        "ticker": ticker,
+                        "class_code": class_code,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                )
                 results.append(result)
 
         except Exception as e:
@@ -81,6 +86,6 @@ def main():
     else:
         log("❌ Сигналы не найдены")
 
+
 if __name__ == "__main__":
     main()
-

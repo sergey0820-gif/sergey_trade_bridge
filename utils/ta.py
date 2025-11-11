@@ -2,6 +2,7 @@ import pandas as pd
 import pandas_ta as ta
 import logging
 
+
 def analyze_ticker_live(df: pd.DataFrame, asset_class: str):
     try:
         if df.empty or len(df) < 10:
@@ -26,12 +27,14 @@ def analyze_ticker_live(df: pd.DataFrame, asset_class: str):
         last_candle = df.iloc[-1]
         prev_candle = df.iloc[-2]
 
-        is_hammer = (last_candle['high'] - last_candle['close'] > 2 * (last_candle['open'] - last_candle['low']))
+        is_hammer = last_candle["high"] - last_candle["close"] > 2 * (
+            last_candle["open"] - last_candle["low"]
+        )
         is_engulfing = (
-            (last_candle['open'] < last_candle['close']) and
-            (prev_candle['open'] > prev_candle['close']) and
-            (last_candle['open'] < prev_candle['close']) and
-            (last_candle['close'] > prev_candle['open'])
+            (last_candle["open"] < last_candle["close"])
+            and (prev_candle["open"] > prev_candle["close"])
+            and (last_candle["open"] < prev_candle["close"])
+            and (last_candle["close"] > prev_candle["open"])
         )
 
         pattern = None
@@ -60,4 +63,3 @@ def analyze_ticker_live(df: pd.DataFrame, asset_class: str):
     except Exception as e:
         logging.warning(f"Ошибка в analyze_ticker_live(): {e}")
         return None
-
