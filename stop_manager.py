@@ -1,257 +1,247 @@
-# stop_manager.py — постановка SL/TP из pending_stops.csv
-# Фичи: антидубликаты, опц. отмена прежних, лог в logs/stops_placed.csv, авто-очистка очереди
 
-import os, csv, logging
-from decimal import Decimal, InvalidOperation
-from datetime import datetime
-import pandas as pd
+# stop_manager.py — Variant A (StopOrdersService.post_stop_order)
+# Rules:
+# - SL/TP only via post_stop_order()
+# - Direction & qty from actual portfolio
+# - Supported: shares (TQBR -> PRICE_TYPE_CURRENCY), futures (else -> PRICE_TYPE_POINT)
+# - No duplicates: skip if same type (SL/TP) already active for instrument
+# - Robust CSV parsing (skip bad rows)
+# - All orders are MARKET via ExchangeOrderType.MARKET
+# - Library: tinkoff-investments v0.2.0b59
+
+import os
+import csv
+import logging
+import argparse
+from uuid import uuid4
+from decimal import Decimal
+from typing import Optional, Tuple, Dict, Set
+
 from dotenv import load_dotenv
 from tinkoff.invest import (
     Client,
-    StopOrderDirection,
+    Quotation,
     StopOrderType,
+    StopOrderDirection,
     StopOrderExpirationType,
+    ExchangeOrderType,
+    InstrumentIdType,
+    PriceType,
 )
-from tinkoff.invest.utils import quotation_to_decimal
+from tinkoff.invest.utils import decimal_to_quotation as dq
 
-from trade_utils.csv_helper import load_pending_stops, validate_row
-from trade_utils.position_helper import (
-    get_instrument_uid,
-    find_position,
-    get_position_details,
-)
-from trade_utils.price_helper import place_stop_order
-
+# ---------- logging ----------
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[logging.StreamHandler()]
 )
+log = logging.getLogger("stop_manager")
 
+# ---------- constants ----------
+CSV_PATH   = "pending_stops.csv"              # header: ticker,class_code,stop_price,target_price
+LOG_PLACED = "logs/stops_placed.csv"
 
-def ensure_logs_dir():
-    os.makedirs("logs", exist_ok=True)
+load_dotenv()
+ACCOUNT_ID = os.getenv("TINKOFF_ACCOUNT_ID")
+TOKEN      = os.getenv("TINKOFF_TOKEN")
 
+# ---------- utils ----------
+def to_dec(v) -> Optional[Decimal]:
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    try:
+        return Decimal(s)
+    except Exception:
+        return None
 
-def log_stop(order_id: str, ticker: str, kind: str, qty: int, price: Decimal):
-    ensure_logs_dir()
-    path = "logs/stops_placed.csv"
-    new_file = not os.path.exists(path)
-    with open(path, "a", newline="") as f:
-        w = csv.writer(f)
-        if new_file:
-            w.writerow(["ts", "ticker", "kind", "qty", "price", "stop_order_id"])
-        w.writerow(
-            [
-                datetime.now().isoformat(timespec="seconds"),
-                ticker,
-                kind.upper(),
-                qty,
-                str(price),
-                order_id,
-            ]
+def quotation_to_float(q: Optional[Quotation]) -> Optional[float]:
+    if not q:
+        return None
+    return float(q.units) + float(q.nano) / 1e9
+
+def price_type_for_class(class_code: str) -> PriceType:
+    return PriceType.PRICE_TYPE_CURRENCY if (class_code or "").upper() == "TQBR" else PriceType.PRICE_TYPE_POINT
+
+def find_instrument_uid(c: Client, ticker: str, class_code: str) -> Tuple[str, str]:
+    cc = (class_code or "").upper()
+    if cc == "TQBR":
+        r = c.instruments.share_by(
+            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+            id=ticker,
+            class_code=cc,
         )
+    else:
+        r = c.instruments.future_by(
+            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+            id=ticker,
+            class_code=cc,
+        )
+    return r.instrument.uid, r.instrument.figi
 
+def get_position_lots_and_side(c: Client, uid: str) -> Tuple[int, str]:
+    """
+    Returns (lots, side) where side in {'LONG','SHORT','FLAT'} based on actual portfolio.
+    Lots are integer lots.
+    """
+    pos = c.operations.get_portfolio(account_id=ACCOUNT_ID).positions
+    for p in pos:
+        if p.instrument_uid == uid:
+            lots = getattr(p, "quantity_lots", None)
+            units = int(getattr(lots, "units", 0) or 0)
+            if units > 0:
+                return units, "LONG"
+            if units < 0:
+                return abs(units), "SHORT"
+            return 0, "FLAT"
+    return 0, "FLAT"
 
-def has_same_stop(
-    client: Client,
-    account_id: str,
-    instrument_uid: str,
-    direction: StopOrderDirection,
-    kind: str,
-    stop_price_dec: Decimal,
-) -> bool:
-    """Есть ли уже активный стоп с теми же параметрами"""
-    stop_type = (
-        StopOrderType.STOP_ORDER_TYPE_STOP_LOSS
-        if kind.lower() in ("sl", "stop_loss", "stoploss")
-        else StopOrderType.STOP_ORDER_TYPE_TAKE_PROFIT
+def load_active_stop_types(c: Client) -> Dict[str, Set[StopOrderType]]:
+    """
+    Map instrument_uid -> set of active stop order types.
+    """
+    res: Dict[str, Set[StopOrderType]] = {}
+    items = c.stop_orders.get_stop_orders(account_id=ACCOUNT_ID).stop_orders
+    for o in items:
+        uid = o.instrument_uid
+        t   = o.stop_order_type
+        res.setdefault(uid, set()).add(t)
+    return res
+
+def ensure_logs_header():
+    os.makedirs("logs", exist_ok=True)
+    if not os.path.exists(LOG_PLACED):
+        with open(LOG_PLACED, "w", encoding="utf-8", newline="") as f:
+            f.write("timestamp,ticker,figi,side,quantity,planned_stop,actual_stop,planned_target,actual_target\n")
+
+def write_result(ts: str, ticker: str, figi: str, side: str, qty: int,
+                 planned_sl: Optional[Decimal], actual_sl: str,
+                 planned_tp: Optional[Decimal], actual_tp: str):
+    ensure_logs_header()
+    with open(LOG_PLACED, "a", encoding="utf-8", newline="") as f:
+        f.write("{},{},{},{},{},{},{},{},{}\n".format(
+            ts, ticker, figi, side, qty,
+            "" if planned_sl is None else str(planned_sl),
+            actual_sl,
+            "" if planned_tp is None else str(planned_tp),
+            actual_tp
+        ))
+
+def place_stop(
+    c: Client,
+    uid: str,
+    figi: str,
+    qty: int,
+    side: str,                # 'LONG' or 'SHORT'
+    stop_price: Decimal,      # trigger
+    price_type: PriceType,
+    kind: StopOrderType,      # STOP_ORDER_TYPE_STOP_LOSS / TAKE_PROFIT
+    dry: bool = False,
+) -> str:
+    """
+    Places a MARKET stop (SL/TP). Returns order_id or raises.
+    """
+    direction = StopOrderDirection.STOP_ORDER_DIRECTION_SELL if side == "LONG" else StopOrderDirection.STOP_ORDER_DIRECTION_BUY
+    kind_name = "SL" if kind == StopOrderType.STOP_ORDER_TYPE_STOP_LOSS else "TP"
+    sp = dq(stop_price)
+
+    log.info("[%s] post_stop_order: uid=%s qty=%s dir=%s stop=%s type=%s (market)",
+             kind_name, uid, qty, direction.name, stop_price, kind.name)
+
+    if dry:
+        return "DRY"
+
+    # Per official docs: instrumentId (figi or instrument_uid), exchangeOrderType, priceType are supported.
+    # GOOD_TILL_CANCEL is the correct enum spelling.
+    # TP: price is required by API, SL: price may be omitted, but we set = stop for consistency.
+    resp = c.stop_orders.post_stop_order(
+        account_id=ACCOUNT_ID,
+        instrument_id=uid,  # UID is fine (docs: instrumentId accepts figi or instrument_uid)
+        quantity=qty,
+        direction=direction,
+        stop_order_type=kind,
+        expiration_type=StopOrderExpirationType.STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCEL,
+        exchange_order_type=ExchangeOrderType.EXCHANGE_ORDER_TYPE_MARKET,
+        price_type=price_type,
+        stop_price=sp,
+        price=sp,  # keep equal to stop for MARKET; TP requires price, SL tolerates it
+        order_id=str(uuid4()),
     )
-    resp = client.stop_orders.get_stop_orders(account_id=account_id)
-    for so in resp.stop_orders:
-        if (
-            so.instrument_uid == instrument_uid
-            and so.direction == direction
-            and so.order_type == stop_type
-            and moneyvalue_to_decimal(so.stop_price) == stop_price_dec
-        ):
-            return True
-    return False
+    return resp.stop_order_id if hasattr(resp, "stop_order_id") else "OK"
 
+def process_row(c: Client, row: dict, dry: bool = False):
+    # Parse & validate row
+    ticker = (row.get("ticker") or "").strip().upper()
+    class_code = (row.get("class_code") or "").strip().upper()
+    sp = to_dec(row.get("stop_price"))
+    tp = to_dec(row.get("target_price"))
 
-def cancel_all_stops_for_uid(client: Client, account_id: str, instrument_uid: str):
-    resp = client.stop_orders.get_stop_orders(account_id=account_id)
-    for so in resp.stop_orders:
-        if so.instrument_uid == instrument_uid:
-            client.stop_orders.cancel_stop_order(
-                account_id=account_id, stop_order_id=str(__import__("uuid").uuid4())
-            )
+    if not ticker or not class_code or (sp is None and tp is None):
+        raise ValueError("bad row: need ticker,class_code and at least one of stop_price/target_price")
 
+    uid, figi = find_instrument_uid(c, ticker, class_code)
+    qty, side = get_position_lots_and_side(c, uid)
+    if qty <= 0 or side == "FLAT":
+        log.info("Skip %s:%s — no position (qty=%s).", ticker, class_code, qty)
+        return
+
+    pt = price_type_for_class(class_code)
+    active_by_uid = load_active_stop_types(c)
+
+    # SL
+    sl_id, tp_id = "", ""
+    if sp is not None:
+        if uid in active_by_uid and StopOrderType.STOP_ORDER_TYPE_STOP_LOSS in active_by_uid[uid]:
+            log.info("[SL] %s already active — skip.", ticker)
+        else:
+            sl_id = place_stop(c, uid, figi, qty, side, sp, pt, StopOrderType.STOP_ORDER_TYPE_STOP_LOSS, dry=dry)
+
+    # TP
+    if tp is not None:
+        if uid in active_by_uid and StopOrderType.STOP_ORDER_TYPE_TAKE_PROFIT in active_by_uid[uid]:
+            log.info("[TP] %s already active — skip.", ticker)
+        else:
+            tp_id = place_stop(c, uid, figi, qty, side, tp, pt, StopOrderType.STOP_ORDER_TYPE_TAKE_PROFIT, dry=dry)
+
+    from datetime import datetime, timezone
+    write_result(datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                 ticker, figi, side, qty, sp, sl_id or ("DRY" if dry else "SKIP"),
+                 tp, tp_id or ("DRY" if dry else "SKIP"))
 
 def main():
-    logging.info("🚦 Запуск stop_manager.py")
-    load_dotenv()
+    parser = argparse.ArgumentParser(description="Place SL/TP via StopOrdersService.")
+    parser.add_argument("--list", dest="list_mode", action="store_true", help="dry-run (list only)")
+    parser.add_argument("--list-only", dest="list_mode", action="store_true", help="alias for --list")
+    parser.add_argument("--place", action="store_true", help="place orders for rows in CSV")
+    parser.add_argument("--csv", default=CSV_PATH, help="path to pending_stops.csv")
+    args = parser.parse_args()
 
-    token = os.getenv("TINKOFF_TOKEN")
-    account_id = os.getenv("TINKOFF_ACCOUNT_ID")
-    cancel_existing = str(os.getenv("CANCEL_EXISTING_FIRST", "0")).lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    if not TOKEN or not ACCOUNT_ID:
+        raise RuntimeError("TINKOFF_TOKEN / TINKOFF_ACCOUNT_ID are not set")
 
-    if not token or not account_id:
-        logging.error("❌ TOKEN или ACCOUNT_ID не заданы в окружении.")
+    if not os.path.exists(args.csv):
+        log.info("No %s — nothing to do.", args.csv)
         return
 
-    df = load_pending_stops("pending_stops.csv")
-    if df.empty:
-        logging.info("📭 Нет заявок для обработки.")
+    with open(args.csv, "r", encoding="utf-8") as f:
+        rdr = csv.DictReader(f)
+        rows = list(rdr)
+
+    if not rows:
+        log.info("%s is empty — nothing to do.", args.csv)
         return
 
-    # никаких applymap — работаем с типами аккуратно
-    to_keep_idx = []
-    already_cancelled = set()
+    dry = args.list_mode and not args.place
 
-    with Client(token) as client:
-        for idx, row in df.iterrows():
-            if not validate_row(row):
-                to_keep_idx.append(idx)
-                continue
-
-            ticker = str(row["ticker"]).strip()
-            class_code = str(row["class_code"]).strip()
-            stop_price = row["stop_price"]
-            target_price = row["target_price"]
-
+    with Client(TOKEN) as c:
+        for row in rows:
             try:
-                instrument_uid = get_instrument_uid(client, ticker, class_code)
-                if not instrument_uid:
-                    logging.warning(
-                        f"⚠️ Не найден инструмент {ticker}/{class_code}, оставляю в очереди…"
-                    )
-                    to_keep_idx.append(idx)
-                    continue
-                logging.info(f"🔍 Инструмент найден: {ticker} → uid={instrument_uid}")
-
-                position = find_position(client, account_id, instrument_uid)
-                if position is None:
-                    logging.info(f"ℹ️ Позиции по {ticker} нет, оставляю в очереди.")
-                    to_keep_idx.append(idx)
-                    continue
-
-                details = get_position_details(position)
-                direction = details["direction"]
-                quantity = details["qty"]
-                if direction == "none" or quantity == 0:
-                    logging.info(f"ℹ️ Нулевая позиция по {ticker}, оставляю в очереди.")
-                    to_keep_idx.append(idx)
-                    continue
-
-                dir_enum = (
-                    StopOrderDirection.STOP_ORDER_DIRECTION_SELL
-                    if direction == "long"
-                    else StopOrderDirection.STOP_ORDER_DIRECTION_BUY
-                )
-                logging.info(
-                    f"📌 Направление позиции: {direction.upper()}, объём: {quantity}"
-                )
-
-                fulfilled_sl = False
-                fulfilled_tp = False
-
-                if cancel_existing and instrument_uid not in already_cancelled:
-                    logging.info(
-                        f"🧹 Отмена всех активных стопов для {ticker} перед постановкой новых…"
-                    )
-                    cancel_all_stops_for_uid(client, account_id, instrument_uid)
-                    already_cancelled.add(instrument_uid)
-
-                if pd.notna(stop_price):
-                    try:
-                        sp_dec = Decimal(str(stop_price))
-                        if has_same_stop(
-                            client, account_id, instrument_uid, dir_enum, "sl", sp_dec
-                        ):
-                            logging.info(
-                                f"⏭️ SL уже существует для {ticker} @ {sp_dec}, пропускаю."
-                            )
-                            fulfilled_sl = True
-                        else:
-                            logging.info(f"📉 Размещение SL для {ticker} @ {sp_dec}")
-                            stop_id = place_stop_order(
-                                client=client,
-                                account_id=account_id,
-                                instrument_uid=instrument_uid,
-                                quantity=quantity,
-                                direction=dir_enum,
-                                stop_price=sp_dec,
-                                kind="sl",
-                                expiration_type=StopOrderExpirationType.STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCEL,
-                            )
-                            log_stop(stop_id, ticker, "SL", quantity, sp_dec)
-                            fulfilled_sl = True
-                    except InvalidOperation:
-                        logging.warning(
-                            f"⚠️ Некорректная цена SL для {ticker}: {stop_price}"
-                        )
-                    except Exception as e:
-                        logging.error(f"💥 Ошибка при постановке SL для {ticker}: {e}")
-
-                if pd.notna(target_price):
-                    try:
-                        tp_dec = Decimal(str(target_price))
-                        if has_same_stop(
-                            client, account_id, instrument_uid, dir_enum, "tp", tp_dec
-                        ):
-                            logging.info(
-                                f"⏭️ TP уже существует для {ticker} @ {tp_dec}, пропускаю."
-                            )
-                            fulfilled_tp = True
-                        else:
-                            logging.info(f"🎯 Размещение TP для {ticker} @ {tp_dec}")
-                            stop_id = place_stop_order(
-                                client=client,
-                                account_id=account_id,
-                                instrument_uid=instrument_uid,
-                                quantity=quantity,
-                                direction=dir_enum,
-                                stop_price=tp_dec,
-                                kind="tp",
-                                expiration_type=StopOrderExpirationType.STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCEL,
-                            )
-                            log_stop(stop_id, ticker, "TP", quantity, tp_dec)
-                            fulfilled_tp = True
-                    except InvalidOperation:
-                        logging.warning(
-                            f"⚠️ Некорректная цена TP для {ticker}: {target_price}"
-                        )
-                    except Exception as e:
-                        logging.error(f"💥 Ошибка при постановке TP для {ticker}: {e}")
-
-                needs_sl = pd.notna(row["stop_price"])
-                needs_tp = pd.notna(row["target_price"])
-                done_all = ((not needs_sl) or fulfilled_sl) and (
-                    (not needs_tp) or fulfilled_tp
-                )
-                if not done_all:
-                    to_keep_idx.append(idx)
-
+                process_row(c, row, dry=dry)
             except Exception as e:
-                logging.error(f"💥 Ошибка при обработке {ticker}: {e}")
-                to_keep_idx.append(idx)
-
-    new_df = df.loc[to_keep_idx]
-    new_df.to_csv("pending_stops.csv", index=False)
-    logging.info("🏁 stop_manager.py завершён.")
-
-
-from tinkoff.invest import MoneyValue
-
-
-def moneyvalue_to_decimal(m: MoneyValue):
-    from decimal import Decimal
-
-    return Decimal(m.units) + (Decimal(m.nano) / Decimal(1_000_000_000))
-
+                log.error("Row error %r: %s", row, e)
 
 if __name__ == "__main__":
     main()
