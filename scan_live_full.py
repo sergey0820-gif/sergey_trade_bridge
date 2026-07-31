@@ -219,6 +219,16 @@ def scan_market(mode: str, max_tickers: int | None, notify: bool = False) -> Non
                     # сетап не найден / невалиден
                     continue
 
+                if setup.side == "short" and class_code == "TQBR":
+                    # STRATEGY.md п.1: шорт допустим только по фьючерсам,
+                    # акции напрямую не шортим
+                    logger.info(
+                        "⛔ %s:%s short по акции — пропускаю (SHORT только для фьючерсов)",
+                        ticker,
+                        class_code,
+                    )
+                    continue
+
                 pattern = setup.mode or "unknown"
 
                 logger.info(

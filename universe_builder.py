@@ -7,6 +7,8 @@ from tinkoff.invest import Client, CandleInterval
 from tinkoff.invest.exceptions import RequestError
 from dotenv import load_dotenv
 
+from config import COMMISSION_BPS_ROUNDTRIP
+
 # === Логирование ===
 logging.basicConfig(
     level=logging.INFO,
@@ -17,6 +19,17 @@ logging.basicConfig(
 MIN_AVG_VOLUME_SHARE = 200_000
 MIN_AVG_VOLUME_FUTURE = 2_000
 MIN_ATR_PERCENT = 2.0
+MIN_TURNOVER_RUB = 10_000_000  # STRATEGY.md п.1: оборот ≥ 10 млн ₽/день
+DIVIDEND_CUTOFF_WINDOW_DAYS = 7  # STRATEGY.md п.1: исключать ±7 дней от отсечки
+MAX_COMMISSION_BPS = 50  # STRATEGY.md п.1: комиссия > 0.5% (50 bps) — исключать
+
+# TODO: фильтр по датам публикации отчётности (±7 дней) из STRATEGY.md п.1
+# НЕ реализован: client.instruments.get_asset_reports(...) падает с внутренней
+# ошибкой SDK (tinkoff-investments==0.2.0b117) при любом варианте вызова
+# (instrument_id kwarg -> TypeError; GetAssetReportsRequest(instrument_id=...)
+# -> RequestError NOT_FOUND; по figi/uid -> AttributeError на 'seconds').
+# Похоже на баг самого SDK, а не ошибку вызова — не пытаться "починить" наивно.
+# Согласовано с владельцем: реализуем только дивидендный фильтр (см. ниже).
 
 # === Инициализация ===
 load_dotenv()
@@ -42,6 +55,26 @@ def calculate_atr(candles):
     return (avg_tr / close_price) * 100 if close_price > 0 else 0.0
 
 
+# === Проверка дивидендной отсечки в окне ±N дней ===
+def has_dividend_cutoff_nearby(client, figi: str, ticker: str) -> bool:
+    now = datetime.now(timezone.utc)
+    window_from = now - timedelta(days=DIVIDEND_CUTOFF_WINDOW_DAYS)
+    window_to = now + timedelta(days=DIVIDEND_CUTOFF_WINDOW_DAYS)
+    try:
+        resp = client.instruments.get_dividends(
+            figi=figi, from_=window_from, to=window_to
+        )
+    except RequestError as e:
+        logging.warning(f"Ошибка при получении дивидендов для {ticker}: {e}")
+        return False
+
+    for div in resp.dividends:
+        cutoff = getattr(div, "last_buy_date", None)
+        if cutoff and window_from <= cutoff <= window_to:
+            return True
+    return False
+
+
 # === Сбор акций ===
 def fetch_shares(client):
     instruments = client.instruments.shares().instruments
@@ -51,9 +84,6 @@ def fetch_shares(client):
     results = []
     for share in instruments:
         if not share.api_trade_available_flag or share.currency != "rub":
-            continue
-        if share.div_yield_flag:
-            logging.info(f"⛔ {share.ticker}: дивиденды — исключено")
             continue
 
         try:
@@ -75,9 +105,26 @@ def fetch_shares(client):
             logging.info(f"🔸 {share.ticker}: низкий объём {avg_volume:.0f}")
             continue
 
+        avg_close = sum(
+            c.close.units + c.close.nano / 1e9 for c in candles.candles
+        ) / len(candles.candles)
+        turnover_rub = avg_volume * avg_close
+        if turnover_rub < MIN_TURNOVER_RUB:
+            logging.info(f"🔸 {share.ticker}: низкий оборот {turnover_rub:.0f} ₽")
+            continue
+
         atr = calculate_atr(candles.candles)
         if atr < MIN_ATR_PERCENT:
             logging.info(f"🔸 {share.ticker}: низкий ATR {atr:.2f}%")
+            continue
+
+        if share.div_yield_flag and has_dividend_cutoff_nearby(
+            client, share.figi, share.ticker
+        ):
+            logging.info(
+                f"⛔ {share.ticker}: дивидендная отсечка в пределах "
+                f"±{DIVIDEND_CUTOFF_WINDOW_DAYS} дней — исключено"
+            )
             continue
 
         results.append(
@@ -124,6 +171,14 @@ def fetch_futures(client):
             logging.info(f"🔸 {fut.ticker}: низкий объём {avg_volume:.0f}")
             continue
 
+        avg_close = sum(
+            c.close.units + c.close.nano / 1e9 for c in candles.candles
+        ) / len(candles.candles)
+        turnover_rub = avg_volume * avg_close
+        if turnover_rub < MIN_TURNOVER_RUB:
+            logging.info(f"🔸 {fut.ticker}: низкий оборот {turnover_rub:.0f} ₽")
+            continue
+
         atr = calculate_atr(candles.candles)
         if atr < MIN_ATR_PERCENT:
             logging.info(f"🔸 {fut.ticker}: низкий ATR {atr:.2f}%")
@@ -145,6 +200,13 @@ def fetch_futures(client):
 
 # === Основная функция ===
 def main():
+    if COMMISSION_BPS_ROUNDTRIP > MAX_COMMISSION_BPS:
+        logging.warning(
+            f"⚠️ Комиссия по тарифу ({COMMISSION_BPS_ROUNDTRIP} bps) превышает "
+            f"лимит {MAX_COMMISSION_BPS} bps (0.5%) — universe не собирается."
+        )
+        return
+
     logging.info("📊 Сканирование акций...")
     with Client(TOKEN) as client:
         shares = fetch_shares(client)
