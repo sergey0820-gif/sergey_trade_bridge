@@ -4,8 +4,8 @@
 """
 auto_executor.py
 
-STRATEGY.md п.2/п.5: автоматический мост candidates_ai.csv → trade_executor.py,
-без Telegram/Sheets/подтверждения человеком.
+STRATEGY.md п.2/п.5: автоматический мост candidates_llm_approved.csv →
+trade_executor.py, без Telegram/Sheets/подтверждения человеком.
 
 Это самое рискованное звено всего плана (вход без человека), поэтому оно
 спрятано за отдельным master-переключателем AUTO_EXECUTE_ENABLED (env,
@@ -15,7 +15,10 @@ STRATEGY.md п.2/п.5: автоматический мост candidates_ai.csv �
 Один проход:
   1. check_daily_risk() — если дневной лимит убытка достигнут, новые входы
      не открываются (существующие позиции остаются под защитой стопов).
-  2. Читаем candidates_ai.csv, оставляем только decision=PASS/verdict=approve.
+  2. Читаем candidates_llm_approved.csv (выход llm_signal_reviewer.py —
+     кандидат уже прошёл и формальные правила ai_filter_agent.py, и
+     независимую LLM-проверку), оставляем decision=PASS/verdict=approve
+     как defense-in-depth (см. STRATEGY.md "LLM-проверка сигналов").
   3. Отбрасываем протухшие по времени кандидаты (AUTO_EXECUTE_CANDIDATE_TTL_SEC).
   4. Отбрасываем кандидатов с уже открытой позицией (по uid из портфеля;
      trade_executor.py делает тот же чек ещё раз как окончательный барьер).
@@ -45,7 +48,7 @@ BASE_DIR = Path(__file__).resolve().parent
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
-CANDIDATES_AI = BASE_DIR / "candidates_ai.csv"
+CANDIDATES_LLM_APPROVED = BASE_DIR / "candidates_llm_approved.csv"
 ORDERS_LOG = LOGS_DIR / "orders_log.csv"
 ORDERS_LOG_HEADER = [
     "ts", "ticker", "class_code", "side", "qty", "lot_size", "price_used", "sum_total", "order_id",
@@ -95,10 +98,17 @@ def pick_python() -> str:
 
 
 def read_approved_candidates() -> list[dict]:
-    if not CANDIDATES_AI.exists():
-        logger.info("candidates_ai.csv не найден — нечего исполнять")
+    """
+    Читает candidates_llm_approved.csv — выход llm_signal_reviewer.py, который
+    уже отфильтровал только кандидатов, прошедших И формальные правила
+    ai_filter_agent.py, И независимую LLM-проверку (llm_decision=approve).
+    Фильтр по decision/verdict ниже — defense-in-depth (колонки пробрасываются
+    насквозь из candidates_ai.csv), а не единственный барьер.
+    """
+    if not CANDIDATES_LLM_APPROVED.exists():
+        logger.info("candidates_llm_approved.csv не найден — нечего исполнять")
         return []
-    with CANDIDATES_AI.open("r", encoding="utf-8", newline="") as f:
+    with CANDIDATES_LLM_APPROVED.open("r", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
 
     approved = [
@@ -106,7 +116,7 @@ def read_approved_candidates() -> list[dict]:
         if (r.get("decision") or "").strip().upper() == "PASS"
         and (r.get("verdict") or "").strip().lower() == "approve"
     ]
-    logger.info("candidates_ai.csv: всего=%d, approve=%d", len(rows), len(approved))
+    logger.info("candidates_llm_approved.csv: всего=%d, approve=%d", len(rows), len(approved))
     return approved
 
 

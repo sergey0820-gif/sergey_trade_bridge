@@ -1,15 +1,27 @@
+annotated-types==0.8.0
+# anthropic пиновано на 0.45.0 НАМЕРЕННО, не последняя версия: начиная с
+# anthropic>=0.50 требуется httpx>=0.25, а python-telegram-bot==20.3 жёстко
+# требует httpx~=0.24.0 (проверено на реальном коде: httpx>=0.25 ломает
+# ApplicationBuilder() в telegram_bridge.py с TypeError). anthropic==0.45.0 —
+# последняя версия, которая реально (не только по метаданным) работает с
+# httpx==0.24.1. Не апгрейдить anthropic без одновременного апгрейда
+# python-telegram-bot (это минимум мажорный скачок 20.x -> 22.x с проверкой
+# telegram_bridge.py).
+anthropic==0.45.0
 anyio==4.11.0
 APScheduler==3.10.4
 cachetools==5.5.2
 certifi==2025.10.5
 charset-normalizer==3.4.4
 deprecation==2.1.0
+distro==1.9.0
 grpcio==1.76.0
 h11==0.14.0
 httpcore==0.17.3
 httpx==0.24.1
 idna==3.11
 iso8601==2.1.0
+jiter==0.16.0
 llvmlite==0.45.1
 loguru==0.7.3
 nest-asyncio==1.6.0
@@ -22,6 +34,8 @@ pandas-ta-openbb==0.4.22
 patsy==1.0.2
 prettytable==3.16.0
 protobuf==4.25.8
+pydantic==2.13.4
+pydantic_core==2.46.4
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-telegram-bot==20.3
@@ -33,6 +47,7 @@ sniffio==1.3.1
 statsmodels==0.14.5
 tinkoff==0.1.1
 tinkoff-investments==0.2.0b117
+typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.2
 tzlocal==5.3.1
