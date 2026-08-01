@@ -220,6 +220,7 @@ __marimo__/
 backups/
 logs/
 out/
+data_cache/
 orders/
 __pycache__/
 *.log

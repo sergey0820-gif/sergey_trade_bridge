@@ -133,11 +133,30 @@ def _structural_target(
 # ОСНОВНОЙ АНАЛИЗ (Стратегия 9/21)
 # ---------------------------------
 
-def analyze_trade_setup(df_d1: pd.DataFrame, df_h4: pd.DataFrame) -> TradeSetup:
+def analyze_trade_setup(
+    df_d1: pd.DataFrame,
+    df_h4: pd.DataFrame,
+    *,
+    require_d1_ema_trend: bool = False,
+    min_volume_ratio: float = 0.0,
+    min_ema_gap_pct: float = 0.0,
+) -> TradeSetup:
     """
     Основная логика поиска сигналов:
     1. Тренд на D1 подтвержден RSI > 50 (для лонга) или RSI < 50 (для шорта).
     2. Вход на H1 при пересечении EMA 9 и EMA 21.
+
+    Опциональные доп. фильтры подтверждения сигнала (выключены по умолчанию,
+    не меняют боевое поведение, пока не проверены бэктестом):
+    - require_d1_ema_trend: помимо RSI, требовать цену D1 выше/ниже EMA50 D1
+      (RSI>50/<50 сам по себе слабо отличает реальный тренд от флэта).
+    - min_volume_ratio: требовать volume_ratio_d1 не ниже порога (0.0 = без
+      фильтра — сейчас объём считается, но нигде не используется как гейт;
+      ВАЖНО: 1.0 — это НЕ нейтральное значение, а реальный фильтр, отсекающий
+      все сигналы с объёмом ниже своей скользящей средней).
+    - min_ema_gap_pct: требовать, чтобы на баре сигнала EMA9/EMA21 разошлись
+      не меньше чем на эту долю цены (0.0 = без фильтра) — отсекает
+      пограничные, едва состоявшиеся пересечения.
     """
     if df_d1.empty or df_h4.empty or len(df_h4) < 22:
         return TradeSetup(None, None, None, None, None, None, None, 1.0, "недостаточно данных")
@@ -147,33 +166,54 @@ def analyze_trade_setup(df_d1: pd.DataFrame, df_h4: pd.DataFrame) -> TradeSetup:
     e21_h1 = ema(df_h4["close"], 21)
     r_h1 = rsi(df_h4["close"], 14)
     a_h1 = atr(df_h4, 14)
-    
+
     # Считаем фильтр тренда на D1
     r_d1 = rsi(df_d1["close"], 14)
-    
+    ema50_d1 = ema(df_d1["close"], 50)
+
     # Последние значения
     curr_e9, prev_e9 = e9_h1.iloc[-1], e9_h1.iloc[-2]
     curr_e21, prev_e21 = e21_h1.iloc[-1], e21_h1.iloc[-2]
     curr_rsi_h1 = r_h1.iloc[-1]
     curr_rsi_d1 = r_d1.iloc[-1]
-    
+    curr_close_d1 = df_d1["close"].iloc[-1]
+    curr_ema50_d1 = ema50_d1.iloc[-1]
+    vol_ratio = _volume_ratio(df_d1)
+
+    def _d1_trend_ok(side: Side) -> bool:
+        if not require_d1_ema_trend:
+            return True
+        if len(df_d1) < 50:
+            return False  # недостаточно баров, чтобы доверять EMA50 — консервативно отказываем
+        return curr_close_d1 > curr_ema50_d1 if side == "long" else curr_close_d1 < curr_ema50_d1
+
+    def _volume_ok() -> bool:
+        return vol_ratio >= min_volume_ratio
+
+    def _ema_gap_ok(entry_price: float) -> bool:
+        if min_ema_gap_pct <= 0 or entry_price <= 0:
+            return True
+        return abs(curr_e9 - curr_e21) / entry_price >= min_ema_gap_pct
+
     side: Optional[Side] = None
     reason = "сетап не найден"
 
-    # Условие LONG: пересечение снизу вверх + фильтр RSI
+    # Условие LONG: пересечение снизу вверх + фильтр RSI (+ опц. подтверждения)
     if curr_e9 > curr_e21 and prev_e9 <= prev_e21:
-        if curr_rsi_h1 > 50 and curr_rsi_d1 > 50:
+        if (curr_rsi_h1 > 50 and curr_rsi_d1 > 50 and _d1_trend_ok("long")
+                and _volume_ok() and _ema_gap_ok(df_h4["close"].iloc[-1])):
             side = "long"
             reason = "EMA 9/21 Cross Up + RSI > 50"
 
-    # Условие SHORT: пересечение сверху вниз + фильтр RSI
+    # Условие SHORT: пересечение сверху вниз + фильтр RSI (+ опц. подтверждения)
     elif curr_e9 < curr_e21 and prev_e9 >= prev_e21:
-        if curr_rsi_h1 < 50 and curr_rsi_d1 < 50:
+        if (curr_rsi_h1 < 50 and curr_rsi_d1 < 50 and _d1_trend_ok("short")
+                and _volume_ok() and _ema_gap_ok(df_h4["close"].iloc[-1])):
             side = "short"
             reason = "EMA 9/21 Cross Down + RSI < 50"
 
     if not side:
-        return TradeSetup(None, None, None, None, None, curr_rsi_d1, curr_rsi_h1, _volume_ratio(df_d1), reason)
+        return TradeSetup(None, None, None, None, None, curr_rsi_d1, curr_rsi_h1, vol_ratio, reason)
 
     # Расчет цен
     entry = df_h4["close"].iloc[-1]
@@ -197,7 +237,7 @@ def analyze_trade_setup(df_d1: pd.DataFrame, df_h4: pd.DataFrame) -> TradeSetup:
         target=target,
         rsi_d1=curr_rsi_d1,
         rsi_h4=curr_rsi_h1,
-        volume_ratio_d1=_volume_ratio(df_d1),
+        volume_ratio_d1=vol_ratio,
         reason=reason
     )
 

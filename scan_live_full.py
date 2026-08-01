@@ -213,7 +213,10 @@ def scan_market(mode: str, max_tickers: int | None, notify: bool = False) -> Non
                     logger.info("Нет свечей для %s:%s, пропускаю", ticker, class_code)
                     continue
 
-                setup = analyze_trade_setup(df_d1, df_h4)
+                # min_volume_ratio=1.0: требовать объём не ниже своей скользящей
+                # средней — по бэктесту на 12 мес/60 тикерах это главный фактор,
+                # поднявший экспектацию с +0.04R до +0.32R на сделку
+                setup = analyze_trade_setup(df_d1, df_h4, min_volume_ratio=1.0)
 
                 if not setup.side or not setup.entry or not setup.stop or not setup.target:
                     # сетап не найден / невалиден

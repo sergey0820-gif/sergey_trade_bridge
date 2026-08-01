@@ -23,6 +23,7 @@ MIN_TURNOVER_RUB = 5_000_000  # понижено с 10 млн — по факт�
 # 190 инструментов, на 5 млн — 241 (+51), без ухода в совсем неликвид (см. обсуждение)
 DIVIDEND_CUTOFF_WINDOW_DAYS = 7  # STRATEGY.md п.1: исключать ±7 дней от отсечки
 MAX_COMMISSION_BPS = 50  # STRATEGY.md п.1: комиссия > 0.5% (50 bps) — исключать
+MIN_DAYS_TO_EXPIRATION = 15  # не торговать фьючерс, если до экспирации меньше
 
 # TODO: фильтр по датам публикации отчётности (±7 дней) из STRATEGY.md п.1
 # НЕ реализован: client.instruments.get_asset_reports(...) падает с внутренней
@@ -151,6 +152,14 @@ def fetch_futures(client):
     results = []
     for fut in instruments:
         if not fut.api_trade_available_flag or fut.currency != "rub":
+            continue
+
+        days_to_expiration = (fut.expiration_date - to_time).days
+        if days_to_expiration < MIN_DAYS_TO_EXPIRATION:
+            logging.info(
+                f"🔸 {fut.ticker}: до экспирации {days_to_expiration} дн. "
+                f"(< {MIN_DAYS_TO_EXPIRATION}) — тонкая ликвидность у ролла, пропуск"
+            )
             continue
 
         try:
