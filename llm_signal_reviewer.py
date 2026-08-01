@@ -44,6 +44,8 @@ from typing import Optional
 import anthropic
 from dotenv import load_dotenv
 
+from signal_journal import append_journal_row
+
 BASE_DIR = Path(__file__).resolve().parent
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
@@ -276,6 +278,19 @@ def main() -> int:
             approved_rows.append(row_out)
         else:
             reject_count += 1
+            # approve идёт дальше в auto_executor.py и журналируется там —
+            # reject здесь финальный, журналируем сразу
+            append_journal_row({
+                "ts": row.get("timestamp", ""),
+                "ticker": ticker, "class_code": class_code, "side": payload["side"],
+                "entry": payload["entry"], "stop": payload["stop"], "target": payload["target"],
+                "rsi_d1": payload["rsi_d1"], "rsi_h4": payload["rsi_h4"],
+                "volume_ratio": payload["volume_ratio"], "pattern": payload["pattern"],
+                "rules_score": payload["rules_score"], "rules_decision": "PASS",
+                "rules_reasons": payload["rules_reasons"],
+                "llm_decision": decision, "llm_reasoning": reasoning,
+                "final_status": "rejected_by_llm", "final_reason": reasoning,
+            })
 
     write_output(approved_rows)
 

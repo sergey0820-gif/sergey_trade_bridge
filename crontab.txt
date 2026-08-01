@@ -43,6 +43,9 @@ CAND_LOCK=/tmp/candidates_pipeline.lock
 # ── Weekly report
 5 19 * * FRI /usr/bin/flock -n /tmp/ai_weekly_report.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_weekly_report.py >> $LOG/ai_weekly_report.log 2>&1"
 
+# ── Monthly signal review — разбор полётов по signal_journal.csv (1-го числа)
+0 8 1 * * /usr/bin/flock -n /tmp/monthly_signal_review.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY monthly_signal_review.py >> $LOG/monthly_signal_review_cron.log 2>&1"
+
 # ── AI positions agent
 45 19 * * 1-5 /usr/bin/flock -n /tmp/ai_positions_agent.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_positions_agent.py >> $LOG/ai_positions_agent.log 2>&1"
 

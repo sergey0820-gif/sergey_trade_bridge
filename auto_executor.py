@@ -49,6 +49,7 @@ from dotenv import load_dotenv
 from tinkoff.invest import Client
 
 from daily_risk_guard import check_daily_risk
+from signal_journal import append_journal_row
 
 BASE_DIR = Path(__file__).resolve().parent
 LOGS_DIR = BASE_DIR / "logs"
@@ -129,6 +130,22 @@ def read_approved_candidates() -> list[dict]:
     ]
     logger.info("candidates_llm_approved.csv: всего=%d, approve=%d", len(rows), len(approved))
     return approved
+
+
+def _journal_row(row: dict, final_status: str, final_reason: str = "") -> None:
+    """Финальная запись в signal_journal.csv для кандидата, дошедшего до auto_executor.py
+    (т.е. уже прошедшего и правила, и LLM) — журналируем ровно один раз, здесь."""
+    append_journal_row({
+        "ts": row.get("timestamp", ""),
+        "ticker": row.get("ticker", ""), "class_code": row.get("class_code", ""),
+        "side": row.get("side", ""), "entry": row.get("entry", ""), "stop": row.get("stop", ""),
+        "target": row.get("target", ""), "rsi_d1": row.get("rsi_d1", ""), "rsi_h4": row.get("rsi_h4", ""),
+        "volume_ratio": row.get("volume_ratio", ""), "pattern": row.get("pattern", ""),
+        "rules_score": row.get("score", ""), "rules_decision": row.get("decision", ""),
+        "rules_reasons": row.get("reasons", ""),
+        "llm_decision": row.get("llm_decision", ""), "llm_reasoning": row.get("llm_reasoning", ""),
+        "final_status": final_status, "final_reason": final_reason,
+    })
 
 
 def is_fresh(row: dict) -> bool:
@@ -264,9 +281,11 @@ def run_once() -> None:
             return
 
         fresh = [r for r in approved if is_fresh(r)]
-        stale_count = len(approved) - len(fresh)
-        if stale_count:
-            logger.info("Отброшено протухших по времени кандидатов: %d", stale_count)
+        stale = [r for r in approved if r not in fresh]
+        for r in stale:
+            _journal_row(r, "skipped_stale")
+        if stale:
+            logger.info("Отброшено протухших по времени кандидатов: %d", len(stale))
         if not fresh:
             return
 
@@ -301,6 +320,7 @@ def run_once() -> None:
                     r["entry"], r["stop"], r["target"],
                     f" -- SKIP: {skip_reason}" if skip_reason else "",
                 )
+                _journal_row(r, "skipped_already_open" if skip_reason else "would_execute")
             return
 
         placed_this_run = 0
@@ -311,6 +331,7 @@ def run_once() -> None:
 
             if uid and uid in open_uids:
                 logger.info("%s: уже есть открытая позиция — пропускаю", ticker)
+                _journal_row(r, "skipped_already_open")
                 continue
 
             if open_count + placed_this_run >= MAX_OPEN_POSITIONS:
@@ -319,6 +340,9 @@ def run_once() -> None:
                     "оставшихся кандидатов этого прохода (score=%s)",
                     ticker, MAX_OPEN_POSITIONS, r.get("score", ""),
                 )
+                idx = fresh.index(r)
+                for rest in fresh[idx:]:
+                    _journal_row(rest, "skipped_position_limit")
                 break
 
             if margin_capped:
@@ -326,6 +350,7 @@ def run_once() -> None:
                     "%s: пропускаю — маржа уже на пределе в этом проходе (score=%s)",
                     ticker, r.get("score", ""),
                 )
+                _journal_row(r, "skipped_margin_limit")
                 continue
 
             # Свежая проверка маржи перед каждым входом — предыдущая сделка в
@@ -341,21 +366,26 @@ def run_once() -> None:
                     starting_margin, liquid_portfolio,
                 )
                 margin_capped = True
+                _journal_row(r, "skipped_margin_limit")
                 continue
 
             try:
                 rc = run_trade_executor(r)
             except Exception as e:
                 logger.exception("%s: ошибка при вызове trade_executor.py: %s", ticker, e)
+                _journal_row(r, "skipped_executor_error", str(e))
                 continue
 
             if rc == 0:
                 placed_this_run += 1
                 logger.info("%s: вход выполнен", ticker)
+                _journal_row(r, "executed")
             elif rc == 2:
                 logger.info("%s: сигнал протух (auto order-type отклонил вход)", ticker)
+                _journal_row(r, "skipped_stale_at_executor")
             else:
                 logger.warning("%s: trade_executor.py вернул код %d — вход не выполнен", ticker, rc)
+                _journal_row(r, "skipped_executor_error", f"rc={rc}")
 
         logger.info("auto_executor: проход завершён, входов открыто=%d", placed_this_run)
 
