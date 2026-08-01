@@ -19,7 +19,8 @@ logging.basicConfig(
 MIN_AVG_VOLUME_SHARE = 200_000
 MIN_AVG_VOLUME_FUTURE = 2_000
 MIN_ATR_PERCENT = 2.0
-MIN_TURNOVER_RUB = 10_000_000  # STRATEGY.md п.1: оборот ≥ 10 млн ₽/день
+MIN_TURNOVER_RUB = 5_000_000  # понижено с 10 млн — по факту на 10 млн проходило
+# 190 инструментов, на 5 млн — 241 (+51), без ухода в совсем неликвид (см. обсуждение)
 DIVIDEND_CUTOFF_WINDOW_DAYS = 7  # STRATEGY.md п.1: исключать ±7 дней от отсечки
 MAX_COMMISSION_BPS = 50  # STRATEGY.md п.1: комиссия > 0.5% (50 bps) — исключать
 
