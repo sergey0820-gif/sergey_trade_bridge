@@ -22,9 +22,15 @@ trade_executor.py, без Telegram/Sheets/подтверждения челов�
   3. Отбрасываем протухшие по времени кандидаты (AUTO_EXECUTE_CANDIDATE_TTL_SEC).
   4. Отбрасываем кандидатов с уже открытой позицией (по uid из портфеля;
      trade_executor.py делает тот же чек ещё раз как окончательный барьер).
-  5. Ограничение MAX_OPEN_POSITIONS одновременных позиций (без currency).
-  6. Для оставшихся — вызываем trade_executor.py --order-type auto подпроцессом.
-  7. Успешные входы дописываются в logs/orders_log.csv.
+  5. Сортируем оставшихся по score правил (убыв.) — при упоре в лимит
+     позиций/маржи первыми отсекаются наименее перспективные, а не те, что
+     случайно оказались позже в файле.
+  6. Ограничения: MAX_OPEN_POSITIONS одновременных позиций (без currency) И
+     MAX_MARGIN_UTILIZATION доли капитала под маржой (реальные брокерские
+     starting_margin/liquid_portfolio через client.users.get_margin_attributes,
+     не собственная оценка) — что наступит раньше, то и останавливает проход.
+  7. Для оставшихся — вызываем trade_executor.py --order-type auto подпроцессом.
+  8. Успешные входы дописываются в logs/orders_log.csv.
 """
 
 from __future__ import annotations
@@ -83,8 +89,13 @@ def _env_bool(name: str, default: bool) -> bool:
 
 AUTO_EXECUTE_ENABLED = _env_bool("AUTO_EXECUTE_ENABLED", False)
 DRY_RUN = _env_bool("DRY_RUN", False)
-MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "10"))
+MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "20"))
 CANDIDATE_TTL_SEC = int(os.getenv("AUTO_EXECUTE_CANDIDATE_TTL_SEC", "900"))
+# Доля капитала, занятая под маржу (starting_margin/liquid_portfolio), выше
+# которой новые входы в этом проходе останавливаются — независимо от того,
+# сколько ещё позиций разрешает MAX_OPEN_POSITIONS. Держим запас (по
+# умолчанию 20%) до реального margin call, а не только считаем позиции.
+MAX_MARGIN_UTILIZATION = float(os.getenv("MAX_MARGIN_UTILIZATION", "0.8"))
 
 
 def pick_python() -> str:
@@ -131,6 +142,34 @@ def is_fresh(row: dict) -> bool:
         return False
     age_sec = (datetime.now() - ts).total_seconds()
     return 0 <= age_sec <= CANDIDATE_TTL_SEC
+
+
+def get_margin_utilization(client: Client, account_id: str) -> tuple[float, float, float]:
+    """
+    Реальная (не приближённая) доля капитала, занятая под маржу — через
+    брокерский client.users.get_margin_attributes, а не собственную формулу
+    notional/5: у разных инструментов разные ставки маржи, брокер знает точно.
+
+    Возвращает (ratio, starting_margin, liquid_portfolio).
+    ratio = starting_margin / liquid_portfolio.
+    При liquid_portfolio <= 0 — fail-safe, ratio=1.0 (как будто маржа уже
+    исчерпана, новые входы не разрешаем).
+    """
+    from tinkoff.invest.utils import money_to_decimal
+
+    m = client.users.get_margin_attributes(account_id=account_id)
+    liquid = float(money_to_decimal(m.liquid_portfolio))
+    starting = float(money_to_decimal(m.starting_margin))
+    if liquid <= 0:
+        return 1.0, starting, liquid
+    return starting / liquid, starting, liquid
+
+
+def _rules_score(row: dict) -> float:
+    try:
+        return float(row.get("score") or 0.0)
+    except ValueError:
+        return 0.0
 
 
 def fetch_portfolio_summary(client: Client, account_id: str) -> tuple[set[str], int]:
@@ -231,60 +270,101 @@ def run_once() -> None:
         if not fresh:
             return
 
+        # Сортируем по score правил (убыв.) — при упоре в лимит позиций/маржи
+        # первыми отсекаются наименее перспективные, а не случайно последние
+        # в файле.
+        fresh.sort(key=_rules_score, reverse=True)
+
         open_uids, open_count = fetch_portfolio_summary(client, TINKOFF_ACCOUNT_ID)
-        logger.info("Открытых позиций сейчас: %d (лимит %d)", open_count, MAX_OPEN_POSITIONS)
-
-    if not AUTO_EXECUTE_ENABLED:
-        logger.info(
-            "AUTO_EXECUTE_ENABLED=false — только логирую намерения, ничего не размещаю (%d кандидатов прошли бы дальше)",
-            len(fresh),
+        margin_ratio, starting_margin, liquid_portfolio = get_margin_utilization(
+            client, TINKOFF_ACCOUNT_ID
         )
+        logger.info(
+            "Открытых позиций: %d (лимит %d) | маржа занята: %.1f%% от капитала "
+            "(лимит %.0f%%, starting_margin=%.2f, liquid_portfolio=%.2f)",
+            open_count, MAX_OPEN_POSITIONS,
+            margin_ratio * 100, MAX_MARGIN_UTILIZATION * 100,
+            starting_margin, liquid_portfolio,
+        )
+
+        if not AUTO_EXECUTE_ENABLED:
+            logger.info(
+                "AUTO_EXECUTE_ENABLED=false — только логирую намерения, ничего не "
+                "размещаю (%d кандидатов прошли бы дальше, по убыванию score)",
+                len(fresh),
+            )
+            for r in fresh:
+                skip_reason = "already_open_position" if r.get("uid") in open_uids else None
+                logger.info(
+                    "[would-execute] %s (%s) side=%s score=%s entry=%s stop=%s target=%s%s",
+                    r["ticker"], r["class_code"], r["side"], r.get("score", ""),
+                    r["entry"], r["stop"], r["target"],
+                    f" -- SKIP: {skip_reason}" if skip_reason else "",
+                )
+            return
+
+        placed_this_run = 0
+        margin_capped = False
         for r in fresh:
-            skip_reason = "already_open_position" if r.get("uid") in open_uids else None
-            logger.info(
-                "[would-execute] %s (%s) side=%s entry=%s stop=%s target=%s%s",
-                r["ticker"], r["class_code"], r["side"], r["entry"], r["stop"], r["target"],
-                f" -- SKIP: {skip_reason}" if skip_reason else "",
+            ticker = r["ticker"]
+            uid = (r.get("uid") or "").strip()
+
+            if uid and uid in open_uids:
+                logger.info("%s: уже есть открытая позиция — пропускаю", ticker)
+                continue
+
+            if open_count + placed_this_run >= MAX_OPEN_POSITIONS:
+                logger.info(
+                    "%s: достигнут лимит одновременных позиций (%d) — пропускаю "
+                    "оставшихся кандидатов этого прохода (score=%s)",
+                    ticker, MAX_OPEN_POSITIONS, r.get("score", ""),
+                )
+                break
+
+            if margin_capped:
+                logger.info(
+                    "%s: пропускаю — маржа уже на пределе в этом проходе (score=%s)",
+                    ticker, r.get("score", ""),
+                )
+                continue
+
+            # Свежая проверка маржи перед каждым входом — предыдущая сделка в
+            # этом же проходе могла её изменить.
+            margin_ratio, starting_margin, liquid_portfolio = get_margin_utilization(
+                client, TINKOFF_ACCOUNT_ID
             )
-        return
+            if margin_ratio >= MAX_MARGIN_UTILIZATION:
+                logger.warning(
+                    "%s: маржа занята %.1f%% >= лимита %.0f%% (starting_margin=%.2f, "
+                    "liquid_portfolio=%.2f) — новые входы в этом проходе остановлены",
+                    ticker, margin_ratio * 100, MAX_MARGIN_UTILIZATION * 100,
+                    starting_margin, liquid_portfolio,
+                )
+                margin_capped = True
+                continue
 
-    placed_this_run = 0
-    for r in fresh:
-        ticker = r["ticker"]
-        uid = (r.get("uid") or "").strip()
+            try:
+                rc = run_trade_executor(r)
+            except Exception as e:
+                logger.exception("%s: ошибка при вызове trade_executor.py: %s", ticker, e)
+                continue
 
-        if uid and uid in open_uids:
-            logger.info("%s: уже есть открытая позиция — пропускаю", ticker)
-            continue
+            if rc == 0:
+                placed_this_run += 1
+                logger.info("%s: вход выполнен", ticker)
+            elif rc == 2:
+                logger.info("%s: сигнал протух (auto order-type отклонил вход)", ticker)
+            else:
+                logger.warning("%s: trade_executor.py вернул код %d — вход не выполнен", ticker, rc)
 
-        if open_count + placed_this_run >= MAX_OPEN_POSITIONS:
-            logger.info(
-                "%s: достигнут лимит одновременных позиций (%d) — пропускаю оставшихся кандидатов этого прохода",
-                ticker, MAX_OPEN_POSITIONS,
-            )
-            break
-
-        try:
-            rc = run_trade_executor(r)
-        except Exception as e:
-            logger.exception("%s: ошибка при вызове trade_executor.py: %s", ticker, e)
-            continue
-
-        if rc == 0:
-            placed_this_run += 1
-            logger.info("%s: вход выполнен", ticker)
-        elif rc == 2:
-            logger.info("%s: сигнал протух (auto order-type отклонил вход)", ticker)
-        else:
-            logger.warning("%s: trade_executor.py вернул код %d — вход не выполнен", ticker, rc)
-
-    logger.info("auto_executor: проход завершён, входов открыто=%d", placed_this_run)
+        logger.info("auto_executor: проход завершён, входов открыто=%d", placed_this_run)
 
 
 def main() -> int:
     logger.info(
-        "Запуск auto_executor.py AUTO_EXECUTE_ENABLED=%s DRY_RUN=%s MAX_OPEN_POSITIONS=%s",
-        AUTO_EXECUTE_ENABLED, DRY_RUN, MAX_OPEN_POSITIONS,
+        "Запуск auto_executor.py AUTO_EXECUTE_ENABLED=%s DRY_RUN=%s "
+        "MAX_OPEN_POSITIONS=%s MAX_MARGIN_UTILIZATION=%.0f%%",
+        AUTO_EXECUTE_ENABLED, DRY_RUN, MAX_OPEN_POSITIONS, MAX_MARGIN_UTILIZATION * 100,
     )
     run_once()
     return 0
