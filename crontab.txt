@@ -21,11 +21,9 @@ CAND_LOCK=/tmp/candidates_pipeline.lock
 */15 10-18 * * 1-5 /usr/bin/flock -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && $PY scan_live_full.py --mode intraday --max 300 --notify >> $LOG/intraday_scan.log 2>&1"
 
 # ── AI-фильтр после утреннего скана (+2 мин)
-22 7 * * 1-5 /usr/bin/flock -w 600 -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_filter_agent.py >> $LOG/ai_filter_morning.log 2>&1; touch $PROJECT/candidates_ai.csv $PROJECT/out/candidates_ai.csv; $PY llm_signal_reviewer.py >> $LOG/llm_signal_reviewer_morning.log 2>&1; $PY auto_executor.py >> $LOG/auto_executor_morning.log 2>&1"
-2-59/15 10-18 * * 1-5 /usr/bin/flock -w 600 -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_filter_agent.py >> $LOG/ai_filter_intraday.log 2>&1; touch $PROJECT/candidates_ai.csv $PROJECT/out/candidates_ai.csv; $PY llm_signal_reviewer.py >> $LOG/llm_signal_reviewer_intraday.log 2>&1; $PY auto_executor.py >> $LOG/auto_executor_intraday.log 2>&1"
+22 7 * * 1-5 /usr/bin/flock -w 600 -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_filter_agent.py >> $LOG/ai_filter_morning.log 2>&1; touch $PROJECT/candidates_ai.csv $PROJECT/out/candidates_ai.csv; $PY llm_signal_reviewer.py >> $LOG/llm_signal_reviewer_morning.log 2>&1; $PY telegram_bridge.py >> $LOG/telegram_bridge_morning.log 2>&1; $PY auto_executor.py >> $LOG/auto_executor_morning.log 2>&1"
+2-59/15 10-18 * * 1-5 /usr/bin/flock -w 600 -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_filter_agent.py >> $LOG/ai_filter_intraday.log 2>&1; touch $PROJECT/candidates_ai.csv $PROJECT/out/candidates_ai.csv; $PY llm_signal_reviewer.py >> $LOG/llm_signal_reviewer_intraday.log 2>&1; $PY telegram_bridge.py >> $LOG/telegram_bridge_intraday.log 2>&1; $PY auto_executor.py >> $LOG/auto_executor_intraday.log 2>&1"
 
-# ── 5) SCAN AGENT (если пишет в candidates.csv — держим тот же lock)
-*/10 10-18 * * 1-5 /usr/bin/flock -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && $PY scan_agent.py >> $LOG/agent.log 2>&1"
 
 # ── 7) Проверка портфеля и ордеров (раз в 30 мин)
 */30 8-18 * * 1-5 /usr/bin/flock -n /tmp/bridge.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY bridge.py >> $LOG/bridge.log 2>&1"
