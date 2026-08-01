@@ -1,0 +1,53 @@
+# =========[ СЕРГЕЙ-ТРЕЙД 2025 — CRONTAB ]=========
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+TZ=Europe/Moscow
+MAILTO=""
+
+PROJECT=/mnt/ssd/sergey_trade_bridge
+PY=$PROJECT/.venv/bin/python
+LOG=$PROJECT/logs
+
+# ЕДИНЫЙ lock для процессов, которые пишут/читают candidates.csv
+CAND_LOCK=/tmp/candidates_pipeline.lock
+
+# ── 2) Universe builder — раз в день
+10 7 * * 1-5 /usr/bin/flock -n /tmp/universe.lock /bin/bash -lc "cd $PROJECT && $PY universe_builder.py >> $LOG/universe.log 2>&1"
+
+# ── 3) Утренний полный скан
+20 7 * * 1-5 /usr/bin/flock -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && $PY scan_live_full.py --mode morning --max 300 --notify >> $LOG/morning_scan.log 2>&1"
+
+# ── 4) Интрадей-скан каждые 15 минут
+*/15 10-18 * * 1-5 /usr/bin/flock -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && $PY scan_live_full.py --mode intraday --max 300 --notify >> $LOG/intraday_scan.log 2>&1"
+
+# ── AI-фильтр после утреннего скана (+2 мин)
+22 7 * * 1-5 /usr/bin/flock -w 600 -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_filter_agent.py >> $LOG/ai_filter_morning.log 2>&1; touch $PROJECT/candidates_ai.csv $PROJECT/out/candidates_ai.csv; $PY llm_signal_reviewer.py >> $LOG/llm_signal_reviewer_morning.log 2>&1"
+2-59/15 10-18 * * 1-5 /usr/bin/flock -w 600 -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_filter_agent.py >> $LOG/ai_filter_intraday.log 2>&1; touch $PROJECT/candidates_ai.csv $PROJECT/out/candidates_ai.csv; $PY llm_signal_reviewer.py >> $LOG/llm_signal_reviewer_intraday.log 2>&1"
+
+# ── 5) SCAN AGENT (если пишет в candidates.csv — держим тот же lock)
+*/10 10-18 * * 1-5 /usr/bin/flock -n $CAND_LOCK /bin/bash -lc "cd $PROJECT && $PY scan_agent.py >> $LOG/agent.log 2>&1"
+
+# ── 7) Проверка портфеля и ордеров (раз в 30 мин)
+*/30 8-18 * * 1-5 /usr/bin/flock -n /tmp/bridge.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY bridge.py >> $LOG/bridge.log 2>&1"
+
+# ── 8) Вечернее уведомление о закрытии торгов
+0 19 * * 1-5 /usr/bin/flock -n /tmp/notify_close.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY notify_close.py >> $LOG/notify_close.log 2>&1"
+
+# ── Pending stops filler
+*/5 7-19 * * 1-5 /usr/bin/flock -w 0 /tmp/pending_stops_filler.lock /bin/bash -lc "cd $PROJECT && $PY -u pending_stops_filler.py >> $LOG/pending_stops_filler.log 2>&1"
+
+# ── Stop manager (каждые 5 минут)
+1-59/5 7-19 * * 1-5 /usr/bin/flock -w 0 /tmp/stop_manager.lock /bin/bash -lc "cd $PROJECT && $PROJECT/run_stop_manager.sh >> $LOG/stop_manager_cron.log 2>&1"
+
+# ── Dynamic stop manager (каждые 5 минут)
+3-59/5 10-19 * * 1-5 /usr/bin/flock -n /tmp/dynamic_stops.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY dynamic_stop_manager.py >> $LOG/dynamic_stop_manager.log 2>&1"
+
+# ── Weekly report
+5 19 * * FRI /usr/bin/flock -n /tmp/ai_weekly_report.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_weekly_report.py >> $LOG/ai_weekly_report.log 2>&1"
+
+# ── AI positions agent
+45 19 * * 1-5 /usr/bin/flock -n /tmp/ai_positions_agent.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY ai_positions_agent.py >> $LOG/ai_positions_agent.log 2>&1"
+
+# ── Positions guard (каждые 2 минуты)
+*/2 7-19 * * 1-5 /usr/bin/flock -n /tmp/positions_guard.lock /bin/bash -lc "cd $PROJECT && set -a; source .env; set +a; $PY positions_guard.py >> $LOG/positions_guard.log 2>&1"
+
