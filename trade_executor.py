@@ -87,6 +87,9 @@ TINKOFF_ACCOUNT_ID = os.getenv("TINKOFF_ACCOUNT_ID")
 CAPITAL_STR = os.getenv("CAPITAL", "0")
 RISK_PER_TRADE_STR = os.getenv("RISK_PER_TRADE", "0.01")
 
+# CAPITAL из .env теперь используется ТОЛЬКО как fallback, если не удалось
+# получить реальную стоимость портфеля живым запросом (см. get_live_capital) —
+# раньше это было единственным источником и не отражало реальный баланс счёта.
 try:
     CAPITAL = float(CAPITAL_STR)
 except ValueError:
@@ -173,6 +176,35 @@ def find_instrument(
 
     logger.warning("Инструмент не найден: %s (%s)", ticker, class_code)
     return None
+
+
+# -------------------------
+# Реальный капитал (вместо статичного CAPITAL из .env)
+# -------------------------
+
+
+def get_live_capital(client: Client, account_id: str, fallback: float) -> float:
+    """
+    Берёт total_amount_portfolio (реальная стоимость счёта: позиции + кэш)
+    живым запросом. Раньше CAPITAL был статичным числом в .env, которое
+    никто не обновлял — расчёт риска на сделку тихо расходился с реальным
+    балансом при росте/просадке счёта. При сбое запроса — fallback на
+    старое статичное значение из .env, с явным предупреждением в лог.
+    """
+    try:
+        pf = client.operations.get_portfolio(account_id=account_id)
+        value = quotation_to_float(pf.total_amount_portfolio)
+        if value <= 0:
+            raise ValueError(f"total_amount_portfolio <= 0: {value}")
+        return value
+    except Exception as e:
+        logger.warning(
+            "Не удалось получить реальную стоимость портфеля (%s) — "
+            "использую CAPITAL из .env как fallback: %.2f",
+            e,
+            fallback,
+        )
+        return fallback
 
 
 # -------------------------
@@ -692,11 +724,13 @@ def main() -> None:
             quantity = int(args.qty)
             logger.info("Использую qty из аргумента: %s лотов", quantity)
         else:
+            live_capital = get_live_capital(client, TINKOFF_ACCOUNT_ID, fallback=CAPITAL)
+            logger.info("Капитал для расчёта риска: %.2f (живой портфель)", live_capital)
             quantity = calc_quantity_from_risk(
                 entry=entry,
                 stop_price=stop_price,
                 lot_size=lot_size,
-                capital=CAPITAL,
+                capital=live_capital,
                 risk_per_trade=RISK_PER_TRADE,
             )
 
