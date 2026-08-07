@@ -21,6 +21,17 @@ risk:reward, оценка/причины формальных правил) — 
 decision=reject (безопасное поведение по умолчанию), с отдельной пометкой
 в логе, что это техническая ошибка, а не содержательное решение модели.
 
+Дедупликация: candidates.csv/candidates_ai.csv перегенерируются каждый
+цикл (2-15 мин), и один и тот же сигнал (тот же ticker+class_code+side на
+тот же timestamp детекции) может пережить несколько циклов подряд, пока не
+протухнет по CANDIDATE_MAX_AGE_MIN. Без дедупликации это означало повторный
+платный вызов LLM и повторную запись в signal_journal.csv на КАЖДЫЙ такой
+цикл — один и тот же сигнал считался несколько раз. .state/llm_reviewed_signals.json
+хранит уже вынесенные решения по (ticker, class_code, side, timestamp) —
+повтор берёт решение из кэша без нового вызова API и без повторной записи
+в журнал. Разные timestamp (тикер реально сработал заново на новом баре) —
+это разные сигналы, дедупликация их не трогает.
+
 Выход:
   - candidates_llm_approved.csv — только approved-строки (полная
     перезапись каждый запуск, как candidates.csv/candidates_ai.csv).
@@ -38,6 +49,7 @@ import logging
 import os
 import re
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -49,9 +61,13 @@ from signal_journal import append_journal_row
 BASE_DIR = Path(__file__).resolve().parent
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
+STATE_DIR = BASE_DIR / ".state"
+STATE_DIR.mkdir(exist_ok=True)
 
 CANDIDATES_AI = BASE_DIR / "candidates_ai.csv"
 CANDIDATES_LLM_APPROVED = BASE_DIR / "candidates_llm_approved.csv"
+REVIEWED_CACHE_PATH = STATE_DIR / "llm_reviewed_signals.json"
+REVIEWED_CACHE_MAX_AGE_HOURS = 24  # с запасом поверх CANDIDATE_MAX_AGE_MIN (обычно 4ч)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -203,6 +219,50 @@ def review_candidate(client: anthropic.Anthropic, payload: dict) -> tuple[str, s
         return "reject", "LLM response was not valid JSON - defaulting to reject"
 
 
+def signal_key(row: dict) -> Optional[str]:
+    """
+    Ключ дедупликации: один и тот же сигнал = тот же ticker+class_code+side
+    на тот же timestamp детекции (его пишет scan_live_full.py один раз на
+    весь проход сканера). Без timestamp дедупликация невозможна и небезопасна
+    (риск ложно схлопнуть разные сигналы) — в этом случае возвращаем None,
+    и вызывающий код просто не кэширует такую строку.
+    """
+    ts = (row.get("timestamp") or "").strip()
+    ticker = (row.get("ticker") or "").strip()
+    if not ts or not ticker:
+        return None
+    class_code = (row.get("class_code") or "").strip()
+    side = (row.get("side") or "").strip().lower()
+    return f"{ticker}|{class_code}|{side}|{ts}"
+
+
+def load_reviewed_cache() -> dict:
+    if not REVIEWED_CACHE_PATH.exists():
+        return {}
+    try:
+        return json.loads(REVIEWED_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning("Не удалось прочитать %s: %s — начинаю с пустого кэша", REVIEWED_CACHE_PATH, e)
+        return {}
+
+
+def save_reviewed_cache(cache: dict) -> None:
+    # Чистим устаревшие записи, чтобы файл не рос бесконечно — сигналы
+    # старше CANDIDATE_MAX_AGE_MIN всё равно уже отброшены выше по пайплайну.
+    cutoff = datetime.now() - timedelta(hours=REVIEWED_CACHE_MAX_AGE_HOURS)
+    pruned = {}
+    for key, val in cache.items():
+        ts = val.get("_cached_at")
+        try:
+            if ts and datetime.fromisoformat(ts) >= cutoff:
+                pruned[key] = val
+        except Exception:
+            continue  # битая запись — не переносим
+    tmp = REVIEWED_CACHE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(pruned, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(REVIEWED_CACHE_PATH)
+
+
 def read_approved_from_rules() -> list[dict]:
     if not CANDIDATES_AI.exists():
         logger.info("candidates_ai.csv не найден — нечего проверять")
@@ -244,30 +304,65 @@ def main() -> int:
         return 0
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    reviewed_cache = load_reviewed_cache()
 
     approved_rows: list[dict] = []
     approve_count = 0
     reject_count = 0
     fail_count = 0
+    cached_count = 0
 
     for row in candidates:
         ticker = row.get("ticker", "?")
         class_code = row.get("class_code", "?")
         payload = build_payload(row)
+        key = signal_key(row)
 
-        decision, reasoning = review_candidate(client, payload)
-        is_failure = reasoning.startswith("LLM call failed") or reasoning.startswith(
-            "LLM response was not valid JSON"
-        )
-        if is_failure:
-            fail_count += 1
+        cached = reviewed_cache.get(key) if key else None
+        if cached is not None:
+            decision, reasoning = cached["decision"], cached["reasoning"]
+            cached_count += 1
+            logger.info(
+                "%s %s side=%s | decision=%s [из кэша, повтор сигнала на %s — LLM не вызывался] | reasoning=%s",
+                ticker, class_code, payload["side"], decision, row.get("timestamp", ""), reasoning,
+            )
+        else:
+            decision, reasoning = review_candidate(client, payload)
+            is_failure = reasoning.startswith("LLM call failed") or reasoning.startswith(
+                "LLM response was not valid JSON"
+            )
+            if is_failure:
+                fail_count += 1
 
-        logger.info(
-            "%s %s side=%s | decision=%s%s | reasoning=%s",
-            ticker, class_code, payload["side"],
-            decision, " [СБОЙ ВЫЗОВА, не решение модели]" if is_failure else "",
-            reasoning,
-        )
+            logger.info(
+                "%s %s side=%s | decision=%s%s | reasoning=%s",
+                ticker, class_code, payload["side"],
+                decision, " [СБОЙ ВЫЗОВА, не решение модели]" if is_failure else "",
+                reasoning,
+            )
+
+            if key:
+                reviewed_cache[key] = {
+                    "decision": decision,
+                    "reasoning": reasoning,
+                    "_cached_at": datetime.now().isoformat(),
+                }
+
+            if decision != "approve":
+                # approve идёт дальше в auto_executor.py и журналируется там —
+                # reject здесь финальный, журналируем сразу (но только один
+                # раз за сигнал — повтор из кэша сюда не попадает).
+                append_journal_row({
+                    "ts": row.get("timestamp", ""),
+                    "ticker": ticker, "class_code": class_code, "side": payload["side"],
+                    "entry": payload["entry"], "stop": payload["stop"], "target": payload["target"],
+                    "rsi_d1": payload["rsi_d1"], "rsi_h4": payload["rsi_h4"],
+                    "volume_ratio": payload["volume_ratio"], "pattern": payload["pattern"],
+                    "rules_score": payload["rules_score"], "rules_decision": "PASS",
+                    "rules_reasons": payload["rules_reasons"],
+                    "llm_decision": decision, "llm_reasoning": reasoning,
+                    "final_status": "rejected_by_llm", "final_reason": reasoning,
+                })
 
         row_out = dict(row)
         row_out["llm_decision"] = decision
@@ -278,25 +373,13 @@ def main() -> int:
             approved_rows.append(row_out)
         else:
             reject_count += 1
-            # approve идёт дальше в auto_executor.py и журналируется там —
-            # reject здесь финальный, журналируем сразу
-            append_journal_row({
-                "ts": row.get("timestamp", ""),
-                "ticker": ticker, "class_code": class_code, "side": payload["side"],
-                "entry": payload["entry"], "stop": payload["stop"], "target": payload["target"],
-                "rsi_d1": payload["rsi_d1"], "rsi_h4": payload["rsi_h4"],
-                "volume_ratio": payload["volume_ratio"], "pattern": payload["pattern"],
-                "rules_score": payload["rules_score"], "rules_decision": "PASS",
-                "rules_reasons": payload["rules_reasons"],
-                "llm_decision": decision, "llm_reasoning": reasoning,
-                "final_status": "rejected_by_llm", "final_reason": reasoning,
-            })
 
     write_output(approved_rows)
+    save_reviewed_cache(reviewed_cache)
 
     logger.info(
-        "[OK] approved=%d/%d (rejected=%d, technical_failures=%d) -> %s",
-        approve_count, len(candidates), reject_count, fail_count, CANDIDATES_LLM_APPROVED,
+        "[OK] approved=%d/%d (rejected=%d, technical_failures=%d, из_кэша=%d) -> %s",
+        approve_count, len(candidates), reject_count, fail_count, cached_count, CANDIDATES_LLM_APPROVED,
     )
     logger.info("=== llm_signal_reviewer.py END ===")
     return 0
