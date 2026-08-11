@@ -1,6 +1,7 @@
 import os
 import csv
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 from tinkoff.invest import Client, CandleInterval
@@ -9,11 +10,25 @@ from dotenv import load_dotenv
 
 from config import COMMISSION_BPS_ROUNDTRIP
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # === Логирование ===
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
 )
+
+# Отдельный alert-лог (не зависит от того, как cron перенаправляет
+# stdout/stderr) — пишется явно из кода при исчерпании retry, чтобы
+# сбой не остался незамеченным, если MAILTO="" и никто не смотрит логи.
+ALERT_LOG_PATH = os.path.join(BASE_DIR, "logs", "universe_alerts.log")
+
+
+def _write_alert(message: str) -> None:
+    os.makedirs(os.path.dirname(ALERT_LOG_PATH), exist_ok=True)
+    ts = datetime.now(timezone.utc).isoformat()
+    with open(ALERT_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"{ts} ERROR universe_builder: {message}\n")
 
 # === Константы фильтрации ===
 MIN_AVG_VOLUME_SHARE = 200_000
@@ -24,6 +39,30 @@ MIN_TURNOVER_RUB = 5_000_000  # понижено с 10 млн — по факт�
 DIVIDEND_CUTOFF_WINDOW_DAYS = 7  # STRATEGY.md п.1: исключать ±7 дней от отсечки
 MAX_COMMISSION_BPS = 50  # STRATEGY.md п.1: комиссия > 0.5% (50 bps) — исключать
 MIN_DAYS_TO_EXPIRATION = 15  # не торговать фьючерс, если до экспирации меньше
+
+# Retry для instruments.shares()/futures() — 2026-08-11: поймали
+# перемежающийся self-signed cert в цепочке TLS у Tinkoff API (похоже на
+# неполный роллаут их же фикса от 2026-08-03), который проходит за
+# несколько минут. Раньше эти два вызова падали необработанным исключением
+# и молча оставляли universe.csv вчерашним (MAILTO="" в crontab — ни один
+# сбой не долетал до человека).
+INSTRUMENTS_RETRY_ATTEMPTS = 5
+INSTRUMENTS_RETRY_DELAY_SECONDS = 60
+
+
+def _fetch_with_retry(fn, label: str, attempts: int = INSTRUMENTS_RETRY_ATTEMPTS,
+                       delay: int = INSTRUMENTS_RETRY_DELAY_SECONDS):
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn()
+        except RequestError as e:
+            last_exc = e
+            logging.warning(f"⚠️ {label}: попытка {attempt}/{attempts} не удалась: {e}")
+            if attempt < attempts:
+                time.sleep(delay)
+    _write_alert(f"{label}: все {attempts} попыток исчерпаны (интервал {delay}с), последняя ошибка: {last_exc}")
+    raise last_exc
 
 # TODO: фильтр по датам публикации отчётности (±7 дней) из STRATEGY.md п.1
 # НЕ реализован: client.instruments.get_asset_reports(...) падает с внутренней
@@ -79,7 +118,9 @@ def has_dividend_cutoff_nearby(client, figi: str, ticker: str) -> bool:
 
 # === Сбор акций ===
 def fetch_shares(client):
-    instruments = client.instruments.shares().instruments
+    instruments = _fetch_with_retry(
+        lambda: client.instruments.shares().instruments, "client.instruments.shares()"
+    )
     from_time = datetime.now(timezone.utc) - timedelta(days=DAYS)
     to_time = datetime.now(timezone.utc)
 
@@ -145,7 +186,9 @@ def fetch_shares(client):
 
 # === Сбор фьючерсов ===
 def fetch_futures(client):
-    instruments = client.instruments.futures().instruments
+    instruments = _fetch_with_retry(
+        lambda: client.instruments.futures().instruments, "client.instruments.futures()"
+    )
     from_time = datetime.now(timezone.utc) - timedelta(days=DAYS)
     to_time = datetime.now(timezone.utc)
 
@@ -209,44 +252,61 @@ def fetch_futures(client):
 
 
 # === Основная функция ===
-def main():
+def _universe_csv_age_str() -> str:
+    if not os.path.exists(OUTPUT_CSV):
+        return "universe.csv отсутствует вообще"
+    age_hours = (time.time() - os.path.getmtime(OUTPUT_CSV)) / 3600
+    return f"текущий universe.csv не обновлён, возраст ~{age_hours:.1f}ч"
+
+
+def main() -> int:
     if COMMISSION_BPS_ROUNDTRIP > MAX_COMMISSION_BPS:
         logging.warning(
             f"⚠️ Комиссия по тарифу ({COMMISSION_BPS_ROUNDTRIP} bps) превышает "
             f"лимит {MAX_COMMISSION_BPS} bps (0.5%) — universe не собирается."
         )
-        return
+        return 0
 
-    logging.info("📊 Сканирование акций...")
-    with Client(TOKEN) as client:
-        shares = fetch_shares(client)
-        logging.info("📉 Сканирование фьючерсов...")
-        futures = fetch_futures(client)
-        total = shares + futures
+    try:
+        logging.info("📊 Сканирование акций...")
+        with Client(TOKEN) as client:
+            shares = fetch_shares(client)
+            logging.info("📉 Сканирование фьючерсов...")
+            futures = fetch_futures(client)
+    except RequestError as e:
+        msg = f"instruments.shares()/futures() не удались после retry — {_universe_csv_age_str()}. Ошибка: {e}"
+        logging.error(f"❌ {msg}")
+        _write_alert(msg)
+        return 1
 
-        if not total:
-            logging.warning("Не найдено подходящих инструментов.")
-            return
+    total = shares + futures
+    if not total:
+        msg = f"Не найдено подходящих инструментов — {_universe_csv_age_str()}"
+        logging.warning(f"⚠️ {msg}")
+        _write_alert(msg)
+        return 1
 
-        with open(OUTPUT_CSV, "w", newline="") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=[
-                    "figi",
-                    "ticker",
-                    "name",
-                    "avg_volume",
-                    "atr_percent",
-                    "asset_class",
-                    "class_code",
-                ],
-            )
-            writer.writeheader()
-            writer.writerows(total)
+    with open(OUTPUT_CSV, "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "figi",
+                "ticker",
+                "name",
+                "avg_volume",
+                "atr_percent",
+                "asset_class",
+                "class_code",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(total)
 
-        logging.info(f"✅ Сохранено: {len(total)} инструментов → {OUTPUT_CSV}")
+    logging.info(f"✅ Сохранено: {len(total)} инструментов → {OUTPUT_CSV}")
+    return 0
 
 
 # === Точка входа ===
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(main())
