@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinkoff"
+version = "0.1.1"
+description = "Namespace root package for tinkoff-investments, vendored from RussianInvestments/invest-python@0.2.0-beta117 source (original PyPI package was quarantined 2025-03-13)"
+
+[tool.setuptools]
+packages = ["tinkoff"]
