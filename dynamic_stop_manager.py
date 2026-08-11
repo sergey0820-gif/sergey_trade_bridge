@@ -31,6 +31,8 @@ import logging
 import math
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -43,8 +45,16 @@ from tinkoff.invest import (
     StopOrder,
     StopOrderDirection,
     StopOrderExpirationType,
-    StopOrderType,
 )
+
+# Переиспользуем напрямую (не копия) — та же функция, которой trade_executor.py
+# реально успешно ставит SL/TP при входе в позицию. Раньше apply_new_sl ниже
+# собирала post_stop_order() вручную и содержала сразу две несуществующие
+# константы (StopOrderType.STOP_ORDER_TYPE_MARKET — в API для стоп-заявок нет
+# отдельного MARKET, см. докстринг place_stop_order — и опечатку в
+# expiration_type), из-за которых постановка нового SL падала гарантированно,
+# а не изредка.
+from trade_utils.price_helper import place_stop_order
 
 # -----------------------------------------------------------------------------
 # Настройки логирования
@@ -66,6 +76,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Отдельный громкий alert-лог (по образцу universe_alerts.log) — 2026-08-11:
+# ENPG на несколько дней остался без SL, потому что post_stop_order упал
+# (опечатка в имени константы) сразу после того, как старый SL уже был
+# отменён, и это осело обычной ERROR-строкой в общем логе, которую никто
+# не увидел. Сюда пишем только САМОЕ важное: позиция реально без защиты.
+ALERT_LOG_PATH = LOGS_DIR / "dynamic_stop_manager_alerts.log"
+
+# Retry + верификация при постановке нового SL — не доверяем одному только
+# отсутствию исключения в Python: 2026-08-11 весь день наблюдали, что
+# Tinkoff API может отвечать нестабильно (SSL-сертификат, странные
+# TypeError на ровном месте) даже когда сам запрос по сути корректен.
+NEW_SL_ATTEMPTS = 3
+NEW_SL_RETRY_DELAY_SECONDS = 5
+NEW_SL_VERIFY_DELAY_SECONDS = 2
+NEW_SL_PRICE_TOLERANCE = 0.01
+
+
+def _write_alert(message: str) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    with open(ALERT_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"{ts} ERROR dynamic_stop_manager: {message}\n")
+
+
 load_dotenv()
 
 
@@ -85,6 +118,29 @@ def float_to_quotation(value: float) -> Quotation:
         units += 1
         nano -= 1_000_000_000
     return Quotation(units=units, nano=nano)
+
+
+def _find_matching_stop_order(
+    client, account_id: str, uid: str, direction_enum, target_price: float,
+    tolerance: float = NEW_SL_PRICE_TOLERANCE,
+) -> Optional[StopOrder]:
+    """
+    Подтверждаем через свежий GetStopOrders, что заявка реально висит на
+    бирже — не полагаемся на то, что post_stop_order не выбросил исключение
+    (см. ALERT_LOG_PATH выше про то, почему это важно).
+    """
+    try:
+        resp = client.stop_orders.get_stop_orders(account_id=account_id)
+    except Exception as e:
+        logger.warning("Не удалось выполнить проверочный GetStopOrders: %s", e)
+        return None
+
+    for so in resp.stop_orders:
+        if so.instrument_uid != uid or so.direction != direction_enum:
+            continue
+        if abs(quotation_to_float(so.stop_price) - target_price) <= tolerance:
+            return so
+    return None
 
 
 # -----------------------------------------------------------------------------
@@ -424,36 +480,76 @@ def apply_new_sl(
         logger.error("Неожиданная ошибка при отмене SL: %s", e)
         return
 
-    # 2) Ставим новый SL (STOP_ORDER_TYPE_MARKET, GOOD_TILL_CANCELLED)
-    try:
-        direction_enum = (
-            StopOrderDirection.STOP_ORDER_DIRECTION_SELL
-            if direction == "long"
-            else StopOrderDirection.STOP_ORDER_DIRECTION_BUY
-        )
-        stop_price_q = float_to_quotation(new_sl_price)
+    # 2) Ставим новый SL — переиспользуем place_stop_order() (тот же путь, что
+    # и рабочая постановка SL/TP в trade_executor.py) — с retry и обязательной
+    # проверкой через GetStopOrders. Старый SL уже отменён на этом этапе — если
+    # постановка нового не удастся молча, позиция останется без защиты
+    # незаметно для человека (это и произошло 2026-08-11 с ENPG).
+    direction_enum = (
+        StopOrderDirection.STOP_ORDER_DIRECTION_SELL
+        if direction == "long"
+        else StopOrderDirection.STOP_ORDER_DIRECTION_BUY
+    )
 
-        resp = stop_orders_service.post_stop_order(
-            account_id=account_id,
-            instrument_id=uid,
-            quantity=qty,
-            stop_price=stop_price_q,
-            price=float_to_quotation(0.0),  # для MARKET можно 0
-            direction=direction_enum,
-            expiration_type=StopOrderExpirationType.STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCELLED,
-            stop_order_type=StopOrderType.STOP_ORDER_TYPE_MARKET,
+    confirmed_order = None
+    last_error = "неизвестно"
+    for attempt in range(1, NEW_SL_ATTEMPTS + 1):
+        try:
+            new_stop_order_id = place_stop_order(
+                client,
+                account_id=account_id,
+                instrument_uid=uid,
+                quantity=qty,
+                direction=direction_enum,
+                stop_price=new_sl_price,
+                kind="sl",
+                expiration_type=StopOrderExpirationType.STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCEL,
+            )
+            logger.info(
+                "post_stop_order не выбросил исключение: %s (%s) stop_price=%.4f, "
+                "stop_order_id=%s (попытка %d/%d) — проверяю через GetStopOrders",
+                ticker, class_code, new_sl_price, new_stop_order_id, attempt, NEW_SL_ATTEMPTS,
+            )
+        except Exception as e:
+            last_error = f"{type(e).__name__}: {e}"
+            logger.error(
+                "Ошибка при постановке нового SL (попытка %d/%d): %s",
+                attempt, NEW_SL_ATTEMPTS, last_error,
+            )
+            if attempt < NEW_SL_ATTEMPTS:
+                time.sleep(NEW_SL_RETRY_DELAY_SECONDS)
+            continue
+
+        # Не доверяем отсутствию исключения — подтверждаем свежим запросом.
+        time.sleep(NEW_SL_VERIFY_DELAY_SECONDS)
+        confirmed_order = _find_matching_stop_order(
+            client, account_id, uid, direction_enum, new_sl_price
         )
-        logger.info(
-            "✅ Новый SL выставлен: %s (%s) stop_price=%.4f, stop_order_id=%s",
-            ticker,
-            class_code,
-            new_sl_price,
-            resp.stop_order_id,
+        if confirmed_order is not None:
+            logger.info(
+                "✅ Новый SL подтверждён через GetStopOrders: %s (%s) stop_price=%.4f, "
+                "stop_order_id=%s",
+                ticker, class_code, new_sl_price, confirmed_order.stop_order_id,
+            )
+            break
+
+        last_error = "post_stop_order не выбросил исключение, но GetStopOrders не находит заявку"
+        logger.error(
+            "⚠️ Новый SL не подтверждён через GetStopOrders (попытка %d/%d): %s",
+            attempt, NEW_SL_ATTEMPTS, last_error,
         )
-    except InvestError as e:
-        logger.error("Ошибка при постановке нового SL: %s", e)
-    except Exception as e:
-        logger.error("Неожиданная ошибка при постановке нового SL: %s", e)
+        if attempt < NEW_SL_ATTEMPTS:
+            time.sleep(NEW_SL_RETRY_DELAY_SECONDS)
+
+    if confirmed_order is None:
+        alert_msg = (
+            f"ПОЗИЦИЯ БЕЗ ЗАЩИТЫ: {ticker} ({class_code}) — старый SL отменён "
+            f"(stop_order_id={sl_order.stop_order_id}, был на {old_sl_price:.4f}), "
+            f"новый SL на {new_sl_price:.4f} поставить не удалось за {NEW_SL_ATTEMPTS} "
+            f"попыток. qty={qty}, direction={direction}. Последняя ошибка: {last_error}"
+        )
+        logger.error("🚨 %s", alert_msg)
+        _write_alert(alert_msg)
 
 
 # -----------------------------------------------------------------------------
