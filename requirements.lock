@@ -44,7 +44,7 @@ numpy==1.26.4
 oauthlib==3.3.1
 packaging==25.0
 pandas==2.3.3
-pandas-ta @ file:///home/chick/sergey_trade_bridge/archives/pandas_ta-0.3.14b0-py3-none-any.whl#sha256=2a01c47a452add8f06f8581286587b1939c05f5a2d48af64facd0a399976189f
+pandas-ta @ file:./archives/pandas_ta-0.3.14b0-py3-none-any.whl#sha256=2a01c47a452add8f06f8581286587b1939c05f5a2d48af64facd0a399976189f
 pandas-ta-openbb==0.4.22
 patsy==1.0.2
 prettytable==3.16.0
