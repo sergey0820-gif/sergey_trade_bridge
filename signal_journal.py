@@ -19,6 +19,10 @@ candidates_llm_approved.csv, которые перезаписываются к�
   skipped_already_open   — уже есть открытая позиция по этому инструменту
   skipped_position_limit — упёрлись в MAX_OPEN_POSITIONS в этом проходе
   skipped_margin_limit   — упёрлись в MAX_MARGIN_UTILIZATION в этом проходе
+  skipped_crypto_filter  — независимая (defense-in-depth) проверка
+                            is_crypto_linked() в auto_executor.py отсекла
+                            крипто-привязанный фьючерс перед исполнением —
+                            второй слой поверх universe_builder.py
   would_execute          — прошёл всё, но AUTO_EXECUTE_ENABLED=false (реальный
                             вход не делался — текущее состояние системы)
   executed                — реально размещён ордер

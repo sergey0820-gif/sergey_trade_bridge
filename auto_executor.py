@@ -46,10 +46,11 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from tinkoff.invest import Client
+from tinkoff.invest import Client, InstrumentIdType
 
 from daily_risk_guard import check_daily_risk
 from signal_journal import append_journal_row
+from universe_builder import is_crypto_linked
 
 BASE_DIR = Path(__file__).resolve().parent
 LOGS_DIR = BASE_DIR / "logs"
@@ -180,6 +181,38 @@ def get_margin_utilization(client: Client, account_id: str) -> tuple[float, floa
     if liquid <= 0:
         return 1.0, starting, liquid
     return starting / liquid, starting, liquid
+
+
+def _is_crypto_futures_candidate(client: Client, row: dict) -> bool:
+    """
+    Defense-in-depth: независимая от universe_builder.py проверка
+    is_crypto_linked() прямо перед исполнением. universe_builder.py уже
+    отсекает крипто-привязанные фьючерсы на этапе формирования вселенной —
+    это ВТОРОЙ, самостоятельный слой на случай устаревания universe.csv
+    между плановыми прогонами, ручного добавления кандидата в обход
+    universe_builder.py, или будущих изменений его логики (STRATEGY.md
+    "Открытые вопросы" п.5, обнаружено 2026-08-12 на SOLUSDperpA).
+
+    Акции (class_code=="TQBR") не имеют понятия basic_asset/крипто-риска —
+    сразу False. Для фьючерсов запрашивается полная карточка инструмента по
+    uid (client.instruments.future_by) — только там есть поле basic_asset.
+
+    Fail-open при ошибке запроса (лог warning, не блокируем) — это
+    дополнительный слой, а не единственная защита; universe_builder.py
+    остаётся первичным барьером.
+    """
+    if row.get("class_code") == "TQBR":
+        return False
+    uid = (row.get("uid") or "").strip()
+    if not uid:
+        return False
+    try:
+        resp = client.instruments.future_by(id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID, id=uid)
+        instrument = resp.instrument
+        return is_crypto_linked(instrument.basic_asset or "", instrument.ticker or "", instrument.name or "")
+    except Exception as e:
+        logger.warning("%s: не удалось проверить is_crypto_linked (defense-in-depth) — %s", row.get("ticker", ""), e)
+        return False
 
 
 def _rules_score(row: dict) -> float:
@@ -367,6 +400,16 @@ def run_once() -> None:
                 )
                 margin_capped = True
                 _journal_row(r, "skipped_margin_limit")
+                continue
+
+            if _is_crypto_futures_candidate(client, r):
+                logger.warning(
+                    "%s: отсечён defense-in-depth крипто-фильтром перед исполнением "
+                    "(universe_builder.py должен был отсечь раньше — если видите это "
+                    "в логах, universe.csv устарел или кандидат обошёл его)",
+                    ticker,
+                )
+                _journal_row(r, "skipped_crypto_filter")
                 continue
 
             try:
