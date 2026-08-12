@@ -40,6 +40,29 @@ DIVIDEND_CUTOFF_WINDOW_DAYS = 7  # STRATEGY.md п.1: исключать ±7 дн
 MAX_COMMISSION_BPS = 50  # STRATEGY.md п.1: комиссия > 0.5% (50 bps) — исключать
 MIN_DAYS_TO_EXPIRATION = 15  # не торговать фьючерс, если до экспирации меньше
 
+# Живая стратегия не торгует ничем крипто-привязанным на TQBR/SPBFUT (решение
+# зафиксировано при отборе пула для склейки непрерывных фьючерсов). Раньше
+# отсекалось только внешним запретом брокера ("Only for qualified investors"
+# на BTU6, 2026-08-03) — не собственным фильтром, то есть переставало бы
+# защищать при смене статуса/политики брокера. Ключевые слова подобраны по
+# фактическому списку basicAsset/name на SPBFUT (проверено по полной выгрузке
+# client.instruments.futures() 2026-08-12): "Индекс Bitcoin"/BTU6.../"Индекс
+# Ethereum"/EHU6.../"ETHA" (Ethereum-ETF, ловится по name)/ETU6.../"Индекс
+# Ripple"/XRU6.../"Индекс Solana"/S3U6.../"Bitcoin-фонд IBIT"/IBU6.../
+# "BTCUSDT"+"SOLUSDT"+"XRPUSDT"+"TRXUSDT"+"ETHUSDT" (перпетуалы) — итого 11
+# базовых активов, 49 тикеров на момент проверки. Список keyword-based (не
+# точный список тикеров), чтобы ловить новые контракты той же природы
+# автоматически, а не требовать ручного обновления на каждую новую серию.
+CRYPTO_BASIC_ASSET_KEYWORDS = (
+    "bitcoin", "ethereum", "ripple", "solana", "litecoin", "dogecoin",
+    "crypto", "крипто", "биткоин", "эфириум", "usdt",
+)
+
+
+def is_crypto_linked(basic_asset: str, ticker: str = "", name: str = "") -> bool:
+    haystack = f"{basic_asset} {ticker} {name}".lower()
+    return any(kw in haystack for kw in CRYPTO_BASIC_ASSET_KEYWORDS)
+
 # Retry для instruments.shares()/futures() — 2026-08-11: поймали
 # перемежающийся self-signed cert в цепочке TLS у Tinkoff API (похоже на
 # неполный роллаут их же фикса от 2026-08-03), который проходит за
@@ -194,6 +217,10 @@ def fetch_futures(client):
 
     results = []
     for fut in instruments:
+        if is_crypto_linked(fut.basic_asset, fut.ticker, fut.name):
+            logging.info(f"🔸 {fut.ticker}: крипто-привязанный инструмент (basic_asset={fut.basic_asset!r}) — исключён по политике")
+            continue
+
         if not fut.api_trade_available_flag or fut.currency != "rub":
             continue
 
