@@ -11,10 +11,27 @@ markdown-текст. Запускать вручную раз в 1-2 недел�
     python3 weekly_live_report.py                 # за последние 7 дней
     python3 weekly_live_report.py --days 14        # за последние 14 дней
     python3 weekly_live_report.py --out report.md  # сохранить в файл (и всё равно вывести в stdout)
+    python3 weekly_live_report.py --push-sheets    # + записать сводку и полный текст в Google Sheets
+    python3 weekly_live_report.py --push-sheets --notify-telegram  # + короткое уведомление в Telegram со ссылкой
 
 Читает read-only: logs/signal_journal.csv, orders_log.csv,
 client.operations.get_operations_by_cursor (реальный счёт через .env).
-Ничего не пишет, ничего не размещает, никаких ордеров.
+Ничего не пишет, ничего не размещает, никаких ордеров (кроме опциональной
+записи отчёта в Google Sheets/уведомления в Telegram при явных флагах
+--push-sheets/--notify-telegram — по умолчанию оба выключены).
+
+Google Sheets (--push-sheets): переиспользует ту же инфраструктуру, что
+sheet_bridge.py (GSHEETS_ENABLED/GSHEETS_CRED_FILE/GSHEETS_SPREADSHEET_ID
+из .env, тот же service account). Две вкладки, обе кумулятивные (строка на
+запуск, для сравнения по неделям), автосоздаются при первом запуске:
+  WEEKLY_SUMMARY — структурные метрики (даты, воронка, ошибки, комиссии,
+                   позиции) одной строкой на запуск.
+  WEEKLY_FULL    — дата + полный markdown-текст отчёта одной ячейкой.
+
+Telegram (--notify-telegram): короткое сообщение "отчёт готов" + ссылка на
+таблицу — переиспользует TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID из .env (та
+же пара, что telegram_bridge.py). Работает только вместе с --push-sheets
+(нужна ссылка на реальную таблицу, не отправляем уведомление без неё).
 
 Секция комиссионной экономики (п.3) считается ВСЕГДА с начала периода
 текущей автостратегии (2026-08-01) — не зависит от --days, чтобы не
@@ -71,7 +88,7 @@ def load_orders_log() -> pd.DataFrame:
 # 1) Воронка LLM-фильтра
 # --------------------------------------------------------------------------
 
-def section_funnel(journal: pd.DataFrame, since: datetime) -> str:
+def section_funnel(journal: pd.DataFrame, since: datetime, metrics: dict) -> str:
     lines = ["## 1. Воронка LLM-фильтра", ""]
     if journal.empty:
         return "\n".join(lines + ["_signal_journal.csv не найден или пуст._", ""])
@@ -102,6 +119,12 @@ def section_funnel(journal: pd.DataFrame, since: datetime) -> str:
     ]
     if rules_pass > 0:
         lines.append(f"- Процент одобрения LLM (среди дошедших): {llm_approve/(llm_approve+llm_reject)*100:.1f}%" if (llm_approve+llm_reject) else "")
+
+    metrics.update({
+        "signals_generated": total, "rules_pass": int(rules_pass), "rules_reject": int(rules_reject),
+        "llm_approve": int(llm_approve), "llm_reject": int(llm_reject), "executed": int(executed),
+        "stale": int(stale), "crypto_filtered": int(crypto_filtered), "executor_error": int(executor_error),
+    })
 
     lines.append("")
     lines.append("По дням:")
@@ -160,7 +183,7 @@ def section_executor_errors(journal: pd.DataFrame, since: datetime) -> str:
 # 3) Комиссионная экономика — только период автостратегии (с 2026-08-01)
 # --------------------------------------------------------------------------
 
-def section_commission_economics() -> str:
+def section_commission_economics(metrics: dict) -> str:
     lines = ["## 3. Комиссионная экономика (весь период автостратегии, с 2026-08-01)", ""]
 
     token = __import__("os").getenv("TINKOFF_TOKEN")
@@ -211,6 +234,11 @@ def section_commission_economics() -> str:
         lines.append(f"⚠️ n={n_trades} сделок — по STRATEGY.md п.1 выборка ещё слишком мала "
                       f"для устойчивых выводов об экономике (ориентир — 30-50 сделок).")
     lines.append("")
+
+    metrics.update({
+        "commission_period_trades": n_trades, "turnover": round(total_turnover, 2),
+        "broker_fee_total": round(total_broker_fee, 2), "margin_fee_total": round(total_margin_fee, 2),
+    })
     return "\n".join(lines)
 
 
@@ -218,7 +246,7 @@ def section_commission_economics() -> str:
 # 4) Распределение размеров позиций
 # --------------------------------------------------------------------------
 
-def section_position_sizes(journal: pd.DataFrame, orders: pd.DataFrame, since: datetime) -> str:
+def section_position_sizes(journal: pd.DataFrame, orders: pd.DataFrame, since: datetime, metrics: dict) -> str:
     lines = ["## 4. Распределение размеров позиций", ""]
     if orders.empty:
         return "\n".join(lines + ["_orders_log.csv не найден или пуст._", ""])
@@ -238,6 +266,11 @@ def section_position_sizes(journal: pd.DataFrame, orders: pd.DataFrame, since: d
     lines.append(f"- Позиций с qty=1 лот (граница минимального лота): {n_qty1} из {len(window)} "
                  f"({n_qty1/len(window)*100:.1f}%)")
     lines.append("")
+
+    metrics.update({
+        "orders_in_window": len(window), "notional_median": round(float(window.notional.median()), 2),
+        "pct_qty1": round(n_qty1 / len(window) * 100, 1),
+    })
     lines.append("_Примечание: `risk_rub` напрямую не хранится в orders_log.csv (lot_size/sum_total там "
                  "не заполняются) — приближение через notional=qty×price_used. Для точного risk_rub "
                  "нужен join с signal_journal.csv по entry/stop, не реализовано в этой версии — "
@@ -246,26 +279,132 @@ def section_position_sizes(journal: pd.DataFrame, orders: pd.DataFrame, since: d
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------
+# Google Sheets (--push-sheets) — переиспользует инфраструктуру sheet_bridge.py
+# --------------------------------------------------------------------------
+
+WS_SUMMARY = "WEEKLY_SUMMARY"
+WS_FULL = "WEEKLY_FULL"
+SUMMARY_HEADER = [
+    "run_ts", "days_window", "since", "signals_generated", "rules_pass", "rules_reject",
+    "llm_approve", "llm_reject", "executed", "stale", "crypto_filtered", "executor_error",
+    "commission_period_trades", "turnover", "broker_fee_total", "margin_fee_total",
+    "orders_in_window", "notional_median", "pct_qty1",
+]
+FULL_HEADER = ["run_ts", "days_window", "since", "full_report_markdown"]
+
+
+def push_to_google_sheets(summary: dict, full_text: str, run_ts: str, since: datetime, days: int) -> Optional[str]:
+    """Возвращает URL таблицы при успехе, None при отключённой/нерабочей конфигурации."""
+    import os as _os
+
+    if _os.getenv("GSHEETS_ENABLED", "0") != "1":
+        print("[Sheets] GSHEETS_ENABLED != 1 — пропуск (используйте --push-sheets только при готовой конфигурации)")
+        return None
+
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+    except ImportError:
+        print("[Sheets] gspread/google-auth не установлены — пропуск")
+        return None
+
+    cred_file = _os.getenv("GSHEETS_CRED_FILE", "")
+    sheet_id = _os.getenv("GSHEETS_SPREADSHEET_ID", "")
+    if not cred_file or not sheet_id:
+        print("[Sheets] GSHEETS_CRED_FILE/GSHEETS_SPREADSHEET_ID не заданы — пропуск")
+        return None
+
+    creds = Credentials.from_service_account_file(
+        cred_file,
+        scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"],
+    )
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(sheet_id)
+
+    def open_or_create(title, header):
+        try:
+            ws = sh.worksheet(title)
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sh.add_worksheet(title=title, rows=2000, cols=max(30, len(header)))
+            ws.append_row(header, value_input_option="RAW")
+            return ws
+        if not ws.get_all_values():
+            ws.append_row(header, value_input_option="RAW")
+        return ws
+
+    ws_summary = open_or_create(WS_SUMMARY, SUMMARY_HEADER)
+    row = {"run_ts": run_ts, "days_window": days, "since": str(since.date()), **summary}
+    ws_summary.append_row([row.get(h, "") for h in SUMMARY_HEADER], value_input_option="RAW")
+
+    ws_full = open_or_create(WS_FULL, FULL_HEADER)
+    ws_full.append_row([run_ts, days, str(since.date()), full_text], value_input_option="RAW")
+
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+    print(f"[Sheets] записано в {WS_SUMMARY} и {WS_FULL}: {url}")
+    return url
+
+
+# --------------------------------------------------------------------------
+# Telegram (--notify-telegram) — переиспользует TELEGRAM_BOT_TOKEN/CHAT_ID
+# --------------------------------------------------------------------------
+
+def send_telegram_notification(sheet_url: str, since: datetime, days: int) -> bool:
+    import os as _os
+
+    token = _os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = _os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("[Telegram] TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы — пропуск")
+        return False
+
+    try:
+        from telegram import Bot
+    except ImportError:
+        print("[Telegram] python-telegram-bot не установлен — пропуск")
+        return False
+
+    import asyncio
+
+    text = (
+        f"📊 Еженедельный отчёт по автостратегии готов "
+        f"(окно: последние {days} дней, с {since.date()}).\n"
+        f"Подробности: {sheet_url}"
+    )
+
+    async def _send():
+        bot = Bot(token=token)
+        await bot.send_message(chat_id=chat_id, text=text)
+
+    asyncio.run(_send())
+    print("[Telegram] уведомление отправлено")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="Еженедельный отчёт по живой автостратегии")
     parser.add_argument("--days", type=int, default=7, help="За сколько последних дней считать воронку/ошибки/позиции (по умолчанию 7)")
     parser.add_argument("--out", type=str, default=None, help="Сохранить отчёт в файл (дополнительно к выводу в stdout)")
+    parser.add_argument("--push-sheets", action="store_true", help="Записать сводку и полный текст в Google Sheets (WEEKLY_SUMMARY/WEEKLY_FULL)")
+    parser.add_argument("--notify-telegram", action="store_true", help="Отправить короткое уведомление в Telegram со ссылкой (требует --push-sheets)")
     args = parser.parse_args()
 
     since = datetime.now(timezone.utc) - timedelta(days=args.days)
+    run_ts = datetime.now(timezone.utc).isoformat()
     journal = load_signal_journal()
     orders = load_orders_log()
+    metrics: dict = {}
 
     report = [
         f"# Еженедельный отчёт по живой автостратегии",
         f"",
-        f"Сгенерировано: {datetime.now(timezone.utc).isoformat()}",
+        f"Сгенерировано: {run_ts}",
         f"Окно (воронка/ошибки/позиции): последние {args.days} дней (с {since.date()})",
         f"",
-        section_funnel(journal, since),
+        section_funnel(journal, since, metrics),
         section_executor_errors(journal, since),
-        section_commission_economics(),
-        section_position_sizes(journal, orders, since),
+        section_commission_economics(metrics),
+        section_position_sizes(journal, orders, since, metrics),
     ]
     text = "\n".join(report)
     print(text)
@@ -273,6 +412,16 @@ def main():
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
         print(f"\n(сохранено также в {args.out})")
+
+    sheet_url = None
+    if args.push_sheets:
+        sheet_url = push_to_google_sheets(metrics, text, run_ts, since, args.days)
+
+    if args.notify_telegram:
+        if not sheet_url:
+            print("[Telegram] --notify-telegram без успешной записи в Sheets — уведомление не отправлено (нет ссылки)")
+        else:
+            send_telegram_notification(sheet_url, since, args.days)
 
 
 if __name__ == "__main__":
