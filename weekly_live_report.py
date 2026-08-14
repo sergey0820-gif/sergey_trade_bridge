@@ -53,6 +53,7 @@ BASE_DIR = Path(__file__).resolve().parent
 LOGS_DIR = BASE_DIR / "logs"
 SIGNAL_JOURNAL = LOGS_DIR / "signal_journal.csv"
 ORDERS_LOG = BASE_DIR / "orders_log.csv"
+DYNAMIC_STOP_EVENTS = LOGS_DIR / "dynamic_stop_events.csv"
 ENV_PATH = BASE_DIR / ".env"
 
 AUTO_STRATEGY_START = datetime(2026, 8, 1, tzinfo=timezone.utc)
@@ -279,6 +280,63 @@ def section_position_sizes(journal: pd.DataFrame, orders: pd.DataFrame, since: d
     return "\n".join(lines)
 
 
+def section_dynamic_stop_health(since: datetime, metrics: dict) -> str:
+    """
+    План наблюдения за фиксом заморозки трейлинга на безубытке
+    (STRATEGY.md "Открытые вопросы" п.8б, 2026-08-13). Читает
+    logs/dynamic_stop_events.csv, который dynamic_stop_manager.py пишет
+    при КАЖДОМ подтверждённом движении SL — метрика "post_breakeven=1"
+    прямо доказывает, что стоп сдвинулся ПОСЛЕ того, как уже был на
+    безубытке (до фикса это было физически невозможно, стоп замирал).
+    """
+    lines = ["## 5. Здоровье динамического трейлинга SL (фикс п.8б)", ""]
+    if not DYNAMIC_STOP_EVENTS.exists():
+        return "\n".join(lines + [
+            "_dynamic_stop_events.csv не найден — либо фикс ещё не деплоился, "
+            "либо ни одна позиция ещё не доходила до условий движения SL "
+            "(R >= DYN_ACTIVATE_R). Не тревога, просто пока нет данных._", "",
+        ])
+
+    df = pd.read_csv(DYNAMIC_STOP_EVENTS, parse_dates=["ts"])
+    if df["ts"].dt.tz is None:
+        df["ts"] = df["ts"].dt.tz_localize("UTC")
+    window = df[df.ts >= since].copy()
+    if window.empty:
+        return "\n".join(lines + [f"_Событий с {since.date()} не было._", ""])
+
+    n_breakeven = (window.stage == "breakeven").sum()
+    n_trail = (window.stage == "trail").sum()
+    n_skip = (window.stage == "unrecoverable_skip").sum()
+    n_post_breakeven = (window.post_breakeven == 1).sum()
+
+    lines.append(f"Событий за период: {len(window)} "
+                 f"(переводов в безубыток: {n_breakeven}, продолжений трейлинга: {n_trail}, "
+                 f"пропусков из-за отсутствия исходного SL: {n_skip})")
+    lines.append("")
+    lines.append(
+        f"**Прямое подтверждение фикса**: движений SL ПОСЛЕ безубытка "
+        f"(`post_breakeven=1` — до фикса было физически невозможно) — **{n_post_breakeven}**."
+    )
+    if n_post_breakeven > 0:
+        confirmed = window[window.post_breakeven == 1][["ts", "ticker", "stage", "old_sl", "new_sl"]]
+        lines.append("")
+        for _, r in confirmed.iterrows():
+            lines.append(f"  - {r.ts} {r.ticker}: {r.stage}, {r.old_sl:.4f} -> "
+                         f"{r.new_sl if pd.notna(r.new_sl) else '(без движения)'}")
+    if n_skip > 0:
+        lines.append("")
+        lines.append(f"⚠️ {n_skip} позиция(й) без записи исходного SL уже на безубытке — "
+                     "требует ручной проверки (см. dynamic_stop_manager_alerts.log).")
+    lines.append("")
+
+    metrics.update({
+        "dyn_stop_events_total": int(len(window)), "dyn_stop_breakeven": int(n_breakeven),
+        "dyn_stop_trail": int(n_trail), "dyn_stop_unrecoverable_skip": int(n_skip),
+        "dyn_stop_post_breakeven_confirmed": int(n_post_breakeven),
+    })
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------
 # Google Sheets (--push-sheets) — переиспользует инфраструктуру sheet_bridge.py
 # --------------------------------------------------------------------------
@@ -290,6 +348,8 @@ SUMMARY_HEADER = [
     "llm_approve", "llm_reject", "executed", "stale", "crypto_filtered", "executor_error",
     "commission_period_trades", "turnover", "broker_fee_total", "margin_fee_total",
     "orders_in_window", "notional_median", "pct_qty1",
+    "dyn_stop_events_total", "dyn_stop_breakeven", "dyn_stop_trail",
+    "dyn_stop_unrecoverable_skip", "dyn_stop_post_breakeven_confirmed",
 ]
 FULL_HEADER = ["run_ts", "days_window", "since", "full_report_markdown"]
 
@@ -405,6 +465,7 @@ def main():
         section_executor_errors(journal, since),
         section_commission_economics(metrics),
         section_position_sizes(journal, orders, since, metrics),
+        section_dynamic_stop_health(since, metrics),
     ]
     text = "\n".join(report)
     print(text)

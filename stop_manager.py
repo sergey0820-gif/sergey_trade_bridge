@@ -30,6 +30,8 @@ from tinkoff.invest import (
 )
 from tinkoff.invest.utils import decimal_to_quotation as dq
 
+from initial_stop_cache import record_initial_sl
+
 # ---------- logging ----------
 logging.basicConfig(
     level=logging.INFO,
@@ -198,6 +200,13 @@ def process_row(c: Client, row: dict, dry: bool = False):
             log.info("[SL] %s already active — skip.", ticker)
         else:
             sl_id = place_stop(c, uid, figi, qty, side, sp, pt, StopOrderType.STOP_ORDER_TYPE_STOP_LOSS, dry=dry)
+            if sl_id and sl_id != "DRY":
+                # Единственное место в пайплайне, где исходный SL достоверно
+                # известен — dynamic_stop_manager.py::compute_new_sl_price()
+                # нужен именно этот, а не текущий (уже возможно сдвинутый)
+                # стоп, см. initial_stop_cache.py.
+                record_initial_sl(uid, float(sp), side.lower())
+                log.info("📌 initial_stop_cache: записан исходный SL для %s uid=%s -> %.4f", ticker, uid, float(sp))
 
     # TP
     if tp is not None:

@@ -55,6 +55,7 @@ from tinkoff.invest import (
 # expiration_type), из-за которых постановка нового SL падала гарантированно,
 # а не изредка.
 from trade_utils.price_helper import place_stop_order
+from initial_stop_cache import get_initial_sl, record_initial_sl
 
 # -----------------------------------------------------------------------------
 # Настройки логирования
@@ -83,6 +84,16 @@ logger = logging.getLogger(__name__)
 # не увидел. Сюда пишем только САМОЕ важное: позиция реально без защиты.
 ALERT_LOG_PATH = LOGS_DIR / "dynamic_stop_manager_alerts.log"
 
+# Структурированный журнал каждого движения SL (в дополнение к текстовому
+# логу) — план наблюдения за фиксом заморозки на безубытке (STRATEGY.md
+# п.8б, 2026-08-13): без этого подтверждение, что трейлинг продолжается
+# ПОСЛЕ безубытка, а не снова замирает, пришлось бы искать вручную по
+# текстовым логам (как случайно заметили ENPG). Читается
+# weekly_live_report.py и вручную (grep/pandas) для точечной проверки
+# первой же живой сработавшей позиции.
+EVENTS_LOG_PATH = LOGS_DIR / "dynamic_stop_events.csv"
+EVENTS_LOG_HEADER = "ts,ticker,class_code,direction,uid,stage,old_sl,new_sl,entry,initial_sl,initial_sl_source,post_breakeven\n"
+
 # Retry + верификация при постановке нового SL — не доверяем одному только
 # отсутствию исключения в Python: 2026-08-11 весь день наблюдали, что
 # Tinkoff API может отвечать нестабильно (SSL-сертификат, странные
@@ -97,6 +108,31 @@ def _write_alert(message: str) -> None:
     ts = datetime.now(timezone.utc).isoformat()
     with open(ALERT_LOG_PATH, "a", encoding="utf-8") as f:
         f.write(f"{ts} ERROR dynamic_stop_manager: {message}\n")
+
+
+def _append_stop_event(
+    ticker: str, class_code: str, direction: str, uid: str, stage: str,
+    old_sl: float, new_sl: Optional[float], entry: float,
+    initial_sl: Optional[float], initial_sl_source: str,
+    post_breakeven: bool = False,
+) -> None:
+    """post_breakeven=True — old_sl на момент этого события уже был на
+    уровне entry (безубытка) или за ним, для соответствующего direction.
+    Прямое, не требующее пересчёта downstream (weekly_live_report.py)
+    подтверждение того, что фикс п.8б реально сработал: движение стопа
+    ПОСЛЕ безубытка физически было невозможно до этого фикса."""
+    is_new = not EVENTS_LOG_PATH.exists()
+    ts = datetime.now(timezone.utc).isoformat()
+    new_sl_s = f"{new_sl:.6f}" if new_sl is not None else ""
+    initial_sl_s = f"{initial_sl:.6f}" if initial_sl is not None else ""
+    with open(EVENTS_LOG_PATH, "a", encoding="utf-8") as f:
+        if is_new:
+            f.write(EVENTS_LOG_HEADER)
+        f.write(
+            f"{ts},{ticker},{class_code},{direction},{uid},{stage},"
+            f"{old_sl:.6f},{new_sl_s},{entry:.6f},{initial_sl_s},{initial_sl_source},"
+            f"{1 if post_breakeven else 0}\n"
+        )
 
 
 load_dotenv()
@@ -334,28 +370,44 @@ def compute_new_sl_price(
     activate_r: float,
     trail_start_r: float,
     trail_gap_r: float,
+    initial_sl: Optional[float] = None,
 ) -> Optional[float]:
     """
     Рассчитываем новый уровень SL.
 
+    ВАЖНО (STRATEGY.md, "Открытые вопросы" п.8б): risk_per_unit считается от
+    ФИКСИРОВАННОГО исходного SL на момент входа (initial_sl), а НЕ от
+    текущего живого old_sl — старая версия пересчитывала риск от old_sl на
+    каждом вызове, и как только SL хоть раз двигался в безубыток
+    (old_sl == entry), проверка "entry <= old_sl" ложно принимала это за
+    некорректные данные и обрывала функцию раньше, чем считался R —
+    трейлинг дальше безубытка был физически невозможен. initial_sl
+    берётся из initial_stop_cache.py (пишет stop_manager.py при первой
+    успешной постановке SL) — вызывающий код (main()) отвечает за
+    fallback/backfill, если запись отсутствует (старая позиция, открыта
+    до этого фикса).
+
     Возвращает:
       - float (новая цена SL), если есть смысл двигать;
-      - None, если менять не нужно.
+      - None, если менять не нужно (или исходный риск неизвестен и
+        небезопасно его восстановить).
     """
     if direction not in ("long", "short"):
         return None
 
-    # базовые величины
+    reference_sl = initial_sl if initial_sl is not None else old_sl
+
+    # базовые величины — от ФИКСИРОВАННОГО исходного SL, не от текущего
     if direction == "long":
-        if entry <= old_sl:
-            # Некорректный SL (выше или равен entry) — не двигаем
+        if entry <= reference_sl:
+            # Некорректные данные (исходный SL выше или равен entry) — не двигаем
             return None
-        risk_per_unit = entry - old_sl
+        risk_per_unit = entry - reference_sl
         profit = current - entry
     else:  # short
-        if entry >= old_sl:
+        if entry >= reference_sl:
             return None
-        risk_per_unit = old_sl - entry
+        risk_per_unit = reference_sl - entry
         profit = entry - current
 
     if risk_per_unit <= 0:
@@ -433,6 +485,8 @@ def apply_new_sl(
     sl_order: StopOrder,
     new_sl_price: float,
     apply_changes: bool,
+    initial_sl: Optional[float] = None,
+    initial_sl_source: str = "unknown",
 ):
     """
     Применяем новый SL:
@@ -550,6 +604,38 @@ def apply_new_sl(
         )
         logger.error("🚨 %s", alert_msg)
         _write_alert(alert_msg)
+        return
+
+    entry = position_info["entry"]
+    min_step = instr_info.get("min_step", 0.01) or 0.01
+    is_trail_stage = (
+        (direction == "long" and new_sl_price > entry + min_step * 0.5) or
+        (direction == "short" and new_sl_price < entry - min_step * 0.5)
+    )
+    was_already_at_or_past_breakeven = (
+        (direction == "long" and old_sl_price >= entry) or
+        (direction == "short" and old_sl_price <= entry)
+    )
+    stage = "trail" if is_trail_stage else "breakeven"
+
+    if was_already_at_or_past_breakeven:
+        # Именно это раньше было физически невозможно (STRATEGY.md п.8б,
+        # заморозка на безубытке) — SL двигается ПОСЛЕ того, как уже был
+        # на безубытке/за ним. Основной сигнал для проверки, что фикс
+        # реально работает на живых данных, а не только в mock-тестах.
+        logger.info(
+            "✅ ПОДТВЕРЖДЕНИЕ ФИКСА п.8б: %s (%s) SL сдвинут ПОСЛЕ безубытка "
+            "(old_SL=%.4f был уже на entry=%.4f или за ним) -> new_SL=%.4f — "
+            "трейлинг продолжается, не заморожен.",
+            ticker, class_code, old_sl_price, entry, new_sl_price,
+        )
+
+    _append_stop_event(
+        ticker=ticker, class_code=class_code, direction=direction, uid=uid,
+        stage=stage, old_sl=old_sl_price, new_sl=new_sl_price, entry=entry,
+        initial_sl=initial_sl, initial_sl_source=initial_sl_source,
+        post_breakeven=was_already_at_or_past_breakeven,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -641,6 +727,49 @@ def main():
                 continue
 
             old_sl = quotation_to_float(sl_order.stop_price)
+
+            initial_sl = get_initial_sl(uid)
+            initial_sl_source = "cached"
+            if initial_sl is None:
+                # Позиция открыта до этого фикса (initial_stop_cache.py
+                # ещё не существовал, когда стоп ставился) — нет записи.
+                already_frozen = (
+                    (direction == "long" and old_sl >= entry) or
+                    (direction == "short" and old_sl <= entry)
+                )
+                if already_frozen:
+                    # Исходный риск физически не восстановить (SL уже на
+                    # уровне entry или за ним) — безопаснее отказаться
+                    # трогать стоп, чем угадывать. Это ровно тот случай,
+                    # который раньше молча зависал (STRATEGY.md п.8б) —
+                    # теперь хотя бы явно видно в логе, что позиция
+                    # требует ручного внимания.
+                    logger.warning(
+                        "⚠️ %s (%s): нет сохранённого исходного SL, а текущий "
+                        "SL=%.4f уже на уровне безубытка/за ним (entry=%.4f) — "
+                        "не могу безопасно восстановить исходный риск, "
+                        "трейлинг для этой позиции пропущен до ручной проверки.",
+                        ticker, class_code, old_sl, entry,
+                    )
+                    _append_stop_event(
+                        ticker=ticker, class_code=class_code, direction=direction, uid=uid,
+                        stage="unrecoverable_skip", old_sl=old_sl, new_sl=None, entry=entry,
+                        initial_sl=None, initial_sl_source="missing",
+                        post_breakeven=True,
+                    )
+                else:
+                    # Ещё не сдвинут — old_sl это и есть исходный SL,
+                    # используем его как есть и сохраняем на будущее.
+                    initial_sl = old_sl
+                    initial_sl_source = "backfilled"
+                    record_initial_sl(uid, old_sl, direction)
+                    logger.info(
+                        "📌 %s (%s): исходный SL не был сохранён — беру текущий "
+                        "%.4f как исходный (позиция ещё не сдвигалась) и "
+                        "сохраняю на будущее.",
+                        ticker, class_code, old_sl,
+                    )
+
             new_sl = compute_new_sl_price(
                 direction=direction,
                 entry=entry,
@@ -650,6 +779,7 @@ def main():
                 activate_r=cfg["activate_r"],
                 trail_start_r=cfg["trail_start_r"],
                 trail_gap_r=cfg["trail_gap_r"],
+                initial_sl=initial_sl,
             )
 
             if new_sl is None:
@@ -672,6 +802,8 @@ def main():
                 sl_order=sl_order,
                 new_sl_price=new_sl,
                 apply_changes=cfg["apply_changes"],
+                initial_sl=initial_sl,
+                initial_sl_source=initial_sl_source,
             )
 
     logger.info("🏁 dynamic_stop_manager.py завершён.")
