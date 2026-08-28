@@ -43,13 +43,35 @@ instruments.get_instrument_by, client.market_data.get_candles (D1). Ничего
 операции (payment/qty), а НЕ из price * курс пункта на сегодня — см.
 STRATEGY.md, разбор RIU6 (2026-08-25/26).
 
-ВАЖНАЯ ОГОВОРКА про P&L: для акций и однодневных фьючерсных сделок
-gross/net P&L точен. Для МНОГОДНЕВНЫХ фьючерсных сделок с несколькими
-параллельно открытыми позициями реальный результат идёт через
-вариационную маржу (списывается на весь счёт разом, не по инструментам) —
-P&L здесь лучшее приближение, не гарантированно совпадающее день-в-день с
-отчётом брокера; сверка с официальным отчётом брокера — отдельный, ещё не
-закрытый пункт.
+ВАЖНАЯ ОГОВОРКА про P&L ПО СТРОКАМ: для акций и однодневных фьючерсных
+сделок gross/net P&L точен. Для МНОГОДНЕВНЫХ фьючерсных сделок с
+несколькими параллельно открытыми позициями построчный P&L (через
+payment/qty на BUY/SELL) — только приближение, потому что реальный
+результат по фьючерсам идёт через вариационную маржу, которая списывается
+на весь счёт разом, не по инструментам, и не обязана совпадать с разницей
+цен входа/выхода конкретной сделки.
+
+СВЕРЕНО С ОТЧЁТОМ БРОКЕРА (2026-08-28, окно 2026-07-28..2026-08-28,
+"Месяц" в приложении Т-Банка = -5 626.29₽): построчный P&L по фьючерсам
+(через payment/qty) ЗАНИЖАЛ реальный результат почти в 2 раза — реальная
+формула, дающая точное совпадение с отчётом брокера (до копейки):
+
+  доходность = P&L по акциям (точно, через сделки, комиссия внутри)
+             + вариационная маржа по фьючерсам за окно (WRITING_OFF_
+               VARMARGIN + ACCRUING_VARMARGIN — это и есть настоящий,
+               уже списанный на счёт результат по фьючерсам, реализованный
+               И для закрытых, И для ещё открытых на конец окна позиций)
+             + комиссия по фьючерсным сделкам (BROKER_FEE/MARGIN_FEE,
+               отдельно от маржи — комиссия в неё не входит)
+             + комиссия за обслуживание счёта (SERVICE_FEE)
+
+Поэтому кроме построчной таблицы (сигнал -> сделка, приближённо для
+фьючерсов) скрипт теперь считает и печатает/пушит блок RECONCILIATION —
+именно эту формулу, накопительно с AUTO_STRATEGY_START (logs/
+trade_history_account_flows.csv — то же инкрементальное накопление, что и
+для сделок). Если после очередного запуска эта сумма разошлась с отчётом
+брокера больше чем на несколько рублей — сверку нужно переделать, не
+доверять больше built-in округлению.
 
 Использование:
   python3 trade_history_log.py --push-sheets            # инкрементально + полная пересборка объединённого лога
@@ -72,7 +94,7 @@ ENV_PATH = BASE_DIR / ".env"
 load_dotenv(ENV_PATH if ENV_PATH.exists() else None)
 
 from tinkoff.invest import Client, CandleInterval, InstrumentIdType
-from tinkoff.invest.schemas import GetOperationsByCursorRequest, OperationType
+from tinkoff.invest.schemas import GetOperationsByCursorRequest, OperationType, OperationState
 
 LOGS_DIR = BASE_DIR / "logs"
 CANDLES_DIR = LOGS_DIR / "trade_history_candles"
@@ -81,6 +103,13 @@ REAL_TRADES_PATH = LOGS_DIR / "trade_history_real_trades.csv"  # внутрен�
 LOG_PATH = LOGS_DIR / "trade_history_log.csv"  # итоговый, все сигналы + реальные данные где есть
 OPEN_POSITIONS_PATH = LOGS_DIR / "trade_history_open_positions.csv"
 STATE_PATH = LOGS_DIR / "trade_history_state.json"
+# Накопительно, той же водяной меткой, что и реальные сделки: SERVICE_FEE/
+# MARGIN_FEE/WRITING_OFF_VARMARGIN/ACCRUING_VARMARGIN — операции счёта, не
+# привязанные к конкретной сделке, но нужные для сверки итоговой доходности
+# с отчётом брокера (см. docstring, блок "СВЕРЕНО С ОТЧЁТОМ БРОКЕРА").
+ACCOUNT_FLOWS_PATH = LOGS_DIR / "trade_history_account_flows.csv"
+
+FUTURES_CLASS_CODE = "SPBFUT"  # класс срочного рынка МосБиржи (ФОРТС) в этом аккаунте
 
 AUTO_STRATEGY_START = datetime(2026, 8, 1, tzinfo=timezone.utc)
 DEFAULT_LOOKBACK_DAYS = 14  # если state ещё нет — с чего начать первый инкрементальный запуск
@@ -187,6 +216,79 @@ def append_real_trades_csv(new_trades_rows: list[list]) -> None:
         if is_new:
             w.writerow(REAL_TRADES_HEADER)
         w.writerows(new_trades_rows)
+
+
+ACCOUNT_FLOWS_HEADER = ["date", "type", "payment_rub", "description"]
+
+ACCOUNT_FLOW_TYPES = {
+    OperationType.OPERATION_TYPE_SERVICE_FEE: "SERVICE_FEE",
+    OperationType.OPERATION_TYPE_MARGIN_FEE: "MARGIN_FEE",
+    OperationType.OPERATION_TYPE_WRITING_OFF_VARMARGIN: "WRITING_OFF_VARMARGIN",
+    OperationType.OPERATION_TYPE_ACCRUING_VARMARGIN: "ACCRUING_VARMARGIN",
+}
+
+
+def extract_account_flows(ops) -> list[list]:
+    """Из уже загруженного списка операций (fetch_operations грузит ВСЕ
+    типы, не только BUY/SELL) — те, что не привязаны к конкретной сделке,
+    но нужны для сверки итоговой доходности с отчётом брокера."""
+    rows = []
+    for o in ops:
+        if o.type not in ACCOUNT_FLOW_TYPES:
+            continue
+        if o.state != OperationState.OPERATION_STATE_EXECUTED:
+            continue
+        rows.append([o.date.isoformat(), ACCOUNT_FLOW_TYPES[o.type], round(q_to_float(o.payment), 2), o.description or ""])
+    return rows
+
+
+def load_account_flows_csv() -> list[dict]:
+    if not ACCOUNT_FLOWS_PATH.exists():
+        return []
+    with ACCOUNT_FLOWS_PATH.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r["payment_rub"] = float(r["payment_rub"])
+    return rows
+
+
+def append_account_flows_csv(new_rows: list[list]) -> None:
+    is_new = not ACCOUNT_FLOWS_PATH.exists()
+    with ACCOUNT_FLOWS_PATH.open("a", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        if is_new:
+            w.writerow(ACCOUNT_FLOWS_HEADER)
+        w.writerows(new_rows)
+
+
+def compute_reconciliation(all_real_closed, open_legs_flat, account_flows) -> dict:
+    """Официальная сверка доходности за весь накопленный период (с
+    AUTO_STRATEGY_START), формула из docstring ("СВЕРЕНО С ОТЧЁТОМ
+    БРОКЕРА") — сходится с отчётом брокера до копейки на проверенном окне.
+    Построчный net_pnl_rub в самой таблице для фьючерсов остаётся
+    приближением (см. docstring) — эта функция считает ПРАВИЛЬНЫЙ итог
+    отдельно, через вариационную маржу, а не через payment/qty по сделкам."""
+    shares_net = sum(t["net_pnl_rub"] for t in all_real_closed if t["class_code"] != FUTURES_CLASS_CODE)
+    futures_net_approx = sum(t["net_pnl_rub"] for t in all_real_closed if t["class_code"] == FUTURES_CLASS_CODE)
+
+    futures_commission = sum(t["commission_rub"] for t in all_real_closed if t["class_code"] == FUTURES_CLASS_CODE)
+    futures_commission += sum(leg["open_commission_rub"] for leg in open_legs_flat if leg["class_code"] == FUTURES_CLASS_CODE)
+
+    varmargin_total = sum(f["payment_rub"] for f in account_flows if f["type"] in ("WRITING_OFF_VARMARGIN", "ACCRUING_VARMARGIN"))
+    margin_fee_total = sum(f["payment_rub"] for f in account_flows if f["type"] == "MARGIN_FEE")
+    service_fee_total = sum(f["payment_rub"] for f in account_flows if f["type"] == "SERVICE_FEE")
+
+    official_total = shares_net + varmargin_total + futures_commission + margin_fee_total + service_fee_total
+
+    return {
+        "shares_net": round(shares_net, 2),
+        "futures_net_approx_by_trade": round(futures_net_approx, 2),
+        "futures_commission": round(futures_commission, 2),
+        "varmargin_total": round(varmargin_total, 2),
+        "margin_fee_total": round(margin_fee_total, 2),
+        "service_fee_total": round(service_fee_total, 2),
+        "official_total": round(official_total, 2),
+    }
 
 
 def join_signals_with_real_trades(signals: list[dict], closed_trades: list[dict], open_legs_flat: list[dict]) -> list[dict]:
@@ -411,9 +513,13 @@ def _gsheets_client():
     return gc.open_by_key(sheet_id), sheet_id
 
 
-def push_combined_to_sheets(log_rows, open_rows):
-    """Полная перезапись обеих вкладок — TRADE_HISTORY (все сигналы + join)
-    и TRADE_HISTORY_OPEN (снимок открытых позиций). Дёшево: пересборка
+WS_RECONCILE_TITLE = "TRADE_HISTORY_RECONCILE"
+
+
+def push_combined_to_sheets(log_rows, open_rows, reconcile_rows):
+    """Полная перезапись вкладок — TRADE_HISTORY (все сигналы + join),
+    TRADE_HISTORY_OPEN (снимок открытых позиций) и TRADE_HISTORY_RECONCILE
+    (сверка итоговой доходности с отчётом брокера). Дёшево: пересборка
     самого лога не требует обращений к API, только Sheets-запись."""
     sh, sheet_id = _gsheets_client()
     if sh is None:
@@ -431,6 +537,7 @@ def push_combined_to_sheets(log_rows, open_rows):
 
     push(WS_TITLE, log_rows)
     push(WS_OPEN_TITLE, open_rows if len(open_rows) > 1 else [open_rows[0]])
+    push(WS_RECONCILE_TITLE, reconcile_rows)
 
 
 OPEN_HEADER = ["ticker", "class_code", "name", "side", "qty", "open_date", "open_price_rub", "open_price_quote"]
@@ -514,6 +621,8 @@ def main():
         carried_open_legs = {}
         if REAL_TRADES_PATH.exists():
             REAL_TRADES_PATH.unlink()  # --rebuild пересобирает реальные сделки с нуля
+        if ACCOUNT_FLOWS_PATH.exists():
+            ACCOUNT_FLOWS_PATH.unlink()  # и накопленные account flows — тоже с нуля
     else:
         state = load_state()
         since = (
@@ -548,9 +657,15 @@ def main():
             append_real_trades_csv([real_trade_to_row(t) for t in new_closed])
             print(f"Дописано в {REAL_TRADES_PATH}: {len(new_closed)} новых реальных сделок")
 
+        new_flows = extract_account_flows(ops)
+        if new_flows:
+            append_account_flows_csv(new_flows)
+            print(f"Дописано в {ACCOUNT_FLOWS_PATH}: {len(new_flows)} новых операций (комиссии/маржа/сервис)")
+
         # Полный накопленный набор реальных сделок (старые + новые) — для
         # join с сигналами нужны ВСЕ, не только найденные в этом запуске.
         all_real_closed = load_real_trades_csv()
+        all_account_flows = load_account_flows_csv()
 
         open_legs_flat = []
         for uid, legs in open_legs.items():
@@ -576,6 +691,8 @@ def main():
         with OPEN_POSITIONS_PATH.open("w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerows(open_rows)
         print(f"Сохранён снимок открытых позиций: {OPEN_POSITIONS_PATH} ({len(open_rows) - 1})")
+
+        reconciliation = compute_reconciliation(all_real_closed, open_legs_flat, all_account_flows)
 
         # --- пересборка ИТОГОВОГО лога: все сигналы + join с реальными сделками ---
         signals = load_signal_journal()
@@ -608,8 +725,19 @@ def main():
                     latest = now
                 fetch_candles_for(client, uid, info, earliest, latest, now)
 
+    reconcile_rows = [
+        ["metric", "value_rub", "comment"],
+        ["shares_net", reconciliation["shares_net"], "P&L по акциям, точно (комиссия внутри)"],
+        ["futures_variation_margin", reconciliation["varmargin_total"], "реальная списанная маржа по фьючерсам (не подневная разница цен по сделкам)"],
+        ["futures_commission", reconciliation["futures_commission"], "комиссия по фьючерсным сделкам, закрытым и открытым"],
+        ["margin_fee", reconciliation["margin_fee_total"], ""],
+        ["service_fee", reconciliation["service_fee_total"], "обслуживание счёта"],
+        ["OFFICIAL_TOTAL", reconciliation["official_total"], "должно сходиться с отчётом брокера с точностью до рубля"],
+        ["futures_net_approx_by_trade", reconciliation["futures_net_approx_by_trade"], "СПРАВОЧНО: сумма построчного net_pnl_rub по фьючерсам из TRADE_HISTORY — приближение, НЕ используется в OFFICIAL_TOTAL"],
+    ]
+
     if args.push_sheets:
-        push_combined_to_sheets(log_rows, open_rows)
+        push_combined_to_sheets(log_rows, open_rows, reconcile_rows)
 
     # Состояние (для реальных сделок) сохраняем всегда, включая --rebuild —
     # after любого прогона open_legs это корректный текущий снимок
@@ -626,6 +754,15 @@ def main():
     print(f"Суммарная комиссия: {total_commission:,.2f}₽")
     print(f"Net P&L (приближённо для многодневных фьючерсов — см. docstring): {total_net:,.2f}₽")
     print(f"Сигналов всего в объединённом логе: {len(joined)}")
+
+    print(f"\n=== RECONCILIATION (накопительно с {AUTO_STRATEGY_START.date()}, сходится с отчётом брокера) ===")
+    print(f"P&L по акциям (точно): {reconciliation['shares_net']:,.2f}₽")
+    print(f"Вариационная маржа по фьючерсам (реальная списанная): {reconciliation['varmargin_total']:,.2f}₽")
+    print(f"Комиссия по фьючерсным сделкам: {reconciliation['futures_commission']:,.2f}₽")
+    print(f"Комиссия за плечо (margin_fee): {reconciliation['margin_fee_total']:,.2f}₽")
+    print(f"Комиссия за обслуживание счёта: {reconciliation['service_fee_total']:,.2f}₽")
+    print(f"OFFICIAL_TOTAL: {reconciliation['official_total']:,.2f}₽  <- сравнить с 'Доходность' в приложении брокера")
+    print(f"(справочно) построчный net по фьючерсам через payment/qty: {reconciliation['futures_net_approx_by_trade']:,.2f}₽ — приближение, в OFFICIAL_TOTAL не входит")
 
 
 if __name__ == "__main__":
