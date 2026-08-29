@@ -126,6 +126,57 @@ def resolve_outcome(client: Client, figi: str, row: dict) -> Optional[dict]:
     return {"outcome": "timeout_unresolved", "outcome_r_multiple": 0, "outcome_exit_price": "", "outcome_exit_time": ""}
 
 
+WS_MONTHLY_REVIEW_TITLE = "MONTHLY_SIGNAL_REVIEW"
+
+
+def push_summary_to_sheets(period: str, resolved: "pd.DataFrame") -> None:
+    """Пушит именно ту таблицу 'разбор полётов по final_status', что и так
+    печатается в консоль — win_rate/expectancy по каждому статусу (executed
+    vs rejected_by_rules vs rejected_by_llm и т.д.). Полная перезапись
+    вкладки при каждом запуске (накопительно за месяц не нужно — период
+    явно в первой строке). USER_ENTERED, чтобы числа были числами, не
+    текстом (см. тот же фикс в trade_history_log.py/weekly_live_report.py)."""
+    if os.getenv("GSHEETS_ENABLED", "0") != "1":
+        logger.info("[Sheets] GSHEETS_ENABLED != 1 — пропуск")
+        return
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+    except ImportError:
+        logger.info("[Sheets] gspread/google-auth не установлены — пропуск")
+        return
+
+    cred_file = os.getenv("GSHEETS_CRED_FILE", "")
+    sheet_id = os.getenv("GSHEETS_SPREADSHEET_ID", "")
+    if not cred_file or not sheet_id:
+        logger.info("[Sheets] GSHEETS_CRED_FILE/GSHEETS_SPREADSHEET_ID не заданы — пропуск")
+        return
+
+    creds = Credentials.from_service_account_file(
+        cred_file, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"],
+    )
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(sheet_id)
+
+    rows = [["period", period], [],
+            ["final_status", "n", "win_rate_pct", "expectancy_r"]]
+    for status, g in resolved.groupby("final_status"):
+        wr = round((g.outcome_r_multiple > 0).mean() * 100, 1)
+        exp = round(g.outcome_r_multiple.mean(), 3)
+        rows.append([status, int(len(g)), wr, exp])
+    wr_all = round((resolved.outcome_r_multiple > 0).mean() * 100, 1)
+    exp_all = round(resolved.outcome_r_multiple.mean(), 3)
+    rows.append(["ВСЕГО", int(len(resolved)), wr_all, exp_all])
+
+    try:
+        ws = sh.worksheet(WS_MONTHLY_REVIEW_TITLE)
+        ws.clear()
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=WS_MONTHLY_REVIEW_TITLE, rows=max(50, len(rows) + 10), cols=10)
+    ws.update(rows, value_input_option="USER_ENTERED")
+    logger.info("[Sheets] %s: обновлено -> https://docs.google.com/spreadsheets/d/%s", WS_MONTHLY_REVIEW_TITLE, sheet_id)
+
+
 def build_instrument_cache(client: Client) -> dict:
     cache = {}
     for s in client.instruments.shares().instruments:
@@ -138,6 +189,7 @@ def build_instrument_cache(client: Client) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Ежемесячный разбор журнала сигналов")
     ap.add_argument("--month", default=None, help="YYYY-MM — только сигналы за этот месяц (по умолчанию — весь журнал)")
+    ap.add_argument("--push-sheets", action="store_true", help="запушить таблицу win_rate/expectancy по final_status в Google Sheets")
     args = ap.parse_args()
 
     token = os.getenv("TINKOFF_TOKEN")
@@ -212,6 +264,9 @@ def main() -> int:
     out_path = OUT_DIR / f"signal_review_{args.month or 'all'}.csv"
     df.to_csv(out_path, index=False)
     print(f"Полная таблица сохранена: {out_path}\n")
+
+    if args.push_sheets:
+        push_summary_to_sheets(period, resolved)
     return 0
 
 
