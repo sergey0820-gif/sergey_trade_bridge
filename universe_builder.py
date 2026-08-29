@@ -63,6 +63,27 @@ def is_crypto_linked(basic_asset: str, ticker: str = "", name: str = "") -> bool
     haystack = f"{basic_asset} {ticker} {name}".lower()
     return any(kw in haystack for kw in CRYPTO_BASIC_ASSET_KEYWORDS)
 
+# Живая стратегия не торгует фьючерсами с плавающим курсом пункта в рублях
+# (RTS и валютные пары, где вторая валюта не рубль) — найдено 2026-08-29 на
+# реальной сделке RIU6 (RTS-9.26, 20-21.08): курс пункта изменился на ~2% за
+# сутки, из-за чего построчный P&L "продажа-покупка" разошёлся с реальной
+# вариационной маржой почти в 2 раза (см. STRATEGY.md). Дело не только в
+# отчётности: если сайзинг позиции и стоп/тейк считаются в рублях от
+# текущего курса пункта, реальный риск на сделку для такого инструмента не
+# равен расчётному — за время удержания курс может уехать независимо от
+# движения самой цены. `fut.currency == "rub"` эту дыру НЕ закрывает — это
+# валюта расчётов (у RTS расчёты в рублях), а не признак плавающего курса
+# пункта, поэтому RIU6 прошёл через существующий фильтр валюты. Проверено
+# на полной выгрузке client.instruments.futures() 2026-08-29: под этот
+# признак попадает 11 базовых активов, 28 тикеров (RTSI, RTSI мини + 9
+# валютных пар не к рублю) из 502 фьючерсов вообще.
+def is_fx_linked(basic_asset: str) -> bool:
+    if not basic_asset:
+        return False
+    if basic_asset.startswith("RTSI"):
+        return True
+    return "/" in basic_asset and not basic_asset.endswith("/RUB")
+
 # Retry для instruments.shares()/futures() — 2026-08-11: поймали
 # перемежающийся self-signed cert в цепочке TLS у Tinkoff API (похоже на
 # неполный роллаут их же фикса от 2026-08-03), который проходит за
@@ -219,6 +240,10 @@ def fetch_futures(client):
     for fut in instruments:
         if is_crypto_linked(fut.basic_asset, fut.ticker, fut.name):
             logging.info(f"🔸 {fut.ticker}: крипто-привязанный инструмент (basic_asset={fut.basic_asset!r}) — исключён по политике")
+            continue
+
+        if is_fx_linked(fut.basic_asset):
+            logging.info(f"🔸 {fut.ticker}: плавающий курс пункта в рублях (basic_asset={fut.basic_asset!r}) — исключён по политике")
             continue
 
         if not fut.api_trade_available_flag or fut.currency != "rub":

@@ -108,6 +108,10 @@ STATE_PATH = LOGS_DIR / "trade_history_state.json"
 # привязанные к конкретной сделке, но нужные для сверки итоговой доходности
 # с отчётом брокера (см. docstring, блок "СВЕРЕНО С ОТЧЁТОМ БРОКЕРА").
 ACCOUNT_FLOWS_PATH = LOGS_DIR / "trade_history_account_flows.csv"
+# Единая табличная сводка: сделки (комиссия отдельным столбцом) + отдельными
+# строками — вариационная маржа/комиссия за обслуживание (не привязаны к
+# конкретной сделке, в P&L по сделке НЕ входят, только свой столбец).
+LEDGER_PATH = LOGS_DIR / "trade_history_ledger.csv"
 
 FUTURES_CLASS_CODE = "SPBFUT"  # класс срочного рынка МосБиржи (ФОРТС) в этом аккаунте
 
@@ -187,7 +191,7 @@ def load_signal_journal() -> list[dict]:
 REAL_TRADES_HEADER = ["uid", "ticker", "class_code", "direction", "qty",
                        "open_date", "open_price_rub", "open_price_quote", "open_commission_rub",
                        "close_date", "close_price_rub", "close_price_quote", "close_commission_rub",
-                       "gross_pnl_rub", "commission_rub", "net_pnl_rub"]
+                       "gross_pnl_rub", "commission_rub", "net_pnl_rub", "fx_linked"]
 
 
 def load_real_trades_csv() -> list[dict]:
@@ -205,6 +209,7 @@ def load_real_trades_csv() -> list[dict]:
                   "close_price_rub", "close_price_quote", "close_commission_rub",
                   "gross_pnl_rub", "commission_rub", "net_pnl_rub"):
             r[k] = float(r[k])
+        r["fx_linked"] = (r.get("fx_linked") or "").strip().lower() in ("true", "1", "yes")
         out.append(r)
     return out
 
@@ -313,7 +318,7 @@ def join_signals_with_real_trades(signals: list[dict], closed_trades: list[dict]
             "planned_entry": sig.get("entry", ""), "planned_stop": sig.get("stop", ""), "planned_target": sig.get("target", ""),
             "trade_status": "", "real_open_date": "", "real_open_price_rub": "", "real_open_price_quote": "",
             "open_commission_rub": "", "real_close_date": "", "real_close_price_rub": "", "real_close_price_quote": "",
-            "close_commission_rub": "", "gross_pnl_rub": "", "commission_rub": "", "net_pnl_rub": "",
+            "close_commission_rub": "", "gross_pnl_rub": "", "commission_rub": "", "net_pnl_rub": "", "fx_linked": "",
         }
 
         ts_dt = sig.get("_ts_dt")
@@ -331,6 +336,7 @@ def join_signals_with_real_trades(signals: list[dict], closed_trades: list[dict]
                 row["real_open_price_rub"] = round(best["open_price_rub"], 2)
                 row["real_open_price_quote"] = round(best.get("open_price_quote", best.get("open_price", 0)), 4)
                 row["open_commission_rub"] = round(best.get("open_commission_rub", best.get("open_commission", 0)), 2)
+                row["fx_linked"] = "TRUE" if best.get("fx_linked") else "FALSE"
                 if best["_kind"] == "closed":
                     row["trade_status"] = "closed"
                     row["real_close_date"] = best["close_date"].isoformat()
@@ -350,7 +356,13 @@ LOG_HEADER = ["ts", "ticker", "class_code", "side", "rules_score", "rules_decisi
               "planned_entry", "planned_stop", "planned_target",
               "trade_status", "real_open_date", "real_open_price_rub", "real_open_price_quote", "open_commission_rub",
               "real_close_date", "real_close_price_rub", "real_close_price_quote", "close_commission_rub",
-              "gross_pnl_rub", "commission_rub", "net_pnl_rub"]
+              "gross_pnl_rub", "commission_rub", "net_pnl_rub", "fx_linked"]
+# fx_linked=TRUE — курс пункта в рублях у этого фьючерса плавает (валютная
+# пара не к рублю, либо RTS) — gross_pnl_rub/net_pnl_rub для такой строки
+# смешивают движение самого инструмента и движение курса, реальный
+# кэш-эффект может ощутимо отличаться (см. docstring, разбор RIU6
+# 2026-08-20/21 — курс пункта изменился на ~2% за сутки). Не применяется к
+# сырьевым фьючерсам, торгуемым в долларах в мире (см. is_fx_linked_basic_asset).
 
 
 def q_to_float(q) -> float:
@@ -374,10 +386,32 @@ def fetch_operations(client, account_id, since, now):
     return items
 
 
+def is_fx_linked_basic_asset(basic_asset: str) -> bool:
+    """Курс пункта в рублях у фьючерса плавает (зависит от валютного
+    курса), если базовый актив сам не рублёвый — валютная пара, где вторая
+    валюта не RUB (например EUR/USD), или индекс RTS (исторически считается
+    "в долларах"). Эмпирически подтверждено в этом счёте на RIU6 (RTS-9.26,
+    2026-08-20/21) — курс пункта поменялся на ~2% за сутки, что и объяснило
+    расхождение построчного P&L с реальной вариационной маржой (см.
+    STRATEGY.md). НЕ распространяем это на сырьевые фьючерсы, торгуемые в
+    долларах на глобальном рынке (какао, нефть и т.п.) — эмпирически на
+    CCX6 (какао) куре пункта оказался фиксированным (10₽/пт), несмотря на
+    то, что какао котируется в долларах — так что "торгуется в долларах в
+    мире" НЕ означает "курс пункта у контракта на MOEX плавает"."""
+    if not basic_asset:
+        return False
+    if basic_asset.startswith("RTSI"):
+        return True
+    if "/" in basic_asset and not basic_asset.endswith("/RUB"):
+        return True
+    return False
+
+
 def get_instrument_info(client, uid, cache):
-    """Тикер/class_code/имя по uid. Курс пункта в рублях не нужен —
-    рублёвая цена берётся напрямую из фактической выплаты по каждой
-    операции (price_rub = payment/qty в match_round_trips)."""
+    """Тикер/class_code/имя по uid + fx_linked (плавающий курс пункта —
+    см. is_fx_linked_basic_asset). Рублёвая цена сделки не нужна отдельно —
+    берётся напрямую из фактической выплаты по каждой операции
+    (price_rub = payment/qty в match_round_trips)."""
     if uid in cache:
         return cache[uid]
     try:
@@ -390,9 +424,16 @@ def get_instrument_info(client, uid, cache):
             "class_code": instr.class_code,
             "figi": instr.figi,
             "name": instr.name,
+            "fx_linked": False,
         }
+        if instr.class_code == FUTURES_CLASS_CODE:
+            try:
+                fut = client.instruments.future_by(id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID, id=uid).instrument
+                info["fx_linked"] = is_fx_linked_basic_asset(fut.basic_asset)
+            except Exception as e:
+                print(f"  [get_instrument_info] {uid}: не удалось проверить basic_asset: {e}")
     except Exception as e:
-        info = {"ticker": uid, "class_code": "?", "figi": "?", "name": f"(ошибка: {e})"}
+        info = {"ticker": uid, "class_code": "?", "figi": "?", "name": f"(ошибка: {e})", "fx_linked": False}
         print(f"  [get_instrument_info] {uid}: {type(e).__name__}: {e}")
     cache[uid] = info
     return info
@@ -514,13 +555,16 @@ def _gsheets_client():
 
 
 WS_RECONCILE_TITLE = "TRADE_HISTORY_RECONCILE"
+WS_LEDGER_TITLE = "TRADE_HISTORY_LEDGER"
 
 
-def push_combined_to_sheets(log_rows, open_rows, reconcile_rows):
+def push_combined_to_sheets(log_rows, open_rows, reconcile_rows, ledger_rows):
     """Полная перезапись вкладок — TRADE_HISTORY (все сигналы + join),
-    TRADE_HISTORY_OPEN (снимок открытых позиций) и TRADE_HISTORY_RECONCILE
-    (сверка итоговой доходности с отчётом брокера). Дёшево: пересборка
-    самого лога не требует обращений к API, только Sheets-запись."""
+    TRADE_HISTORY_OPEN (снимок открытых позиций), TRADE_HISTORY_RECONCILE
+    (сверка итоговой доходности с отчётом брокера) и TRADE_HISTORY_LEDGER
+    (сделки с комиссией + отдельно вариационная маржа своим столбцом).
+    Дёшево: пересборка самого лога не требует обращений к API, только
+    Sheets-запись."""
     sh, sheet_id = _gsheets_client()
     if sh is None:
         return
@@ -538,6 +582,50 @@ def push_combined_to_sheets(log_rows, open_rows, reconcile_rows):
     push(WS_TITLE, log_rows)
     push(WS_OPEN_TITLE, open_rows if len(open_rows) > 1 else [open_rows[0]])
     push(WS_RECONCILE_TITLE, reconcile_rows)
+    push(WS_LEDGER_TITLE, ledger_rows)
+
+
+LEDGER_HEADER = ["date", "type", "ticker", "class_code", "direction", "qty",
+                 "open_price_rub", "close_price_rub", "commission_rub", "variation_margin_rub",
+                 "fx_linked", "status"]
+
+
+def build_ledger_rows(all_real_closed, open_legs_flat, account_flows):
+    """Одна таблица: строки-СДЕЛКИ (тикер/направление/цены/своя комиссия
+    столбцом commission_rub) вперемешку по дате со строками-ОПЕРАЦИЯМИ
+    вариационной маржи (свой столбец variation_margin_rub, commission_rub и
+    цены у них пустые — эти суммы НЕ входят ни в чью построчную P&L, это
+    отдельный, не привязанный к сделке поток на весь счёт, см. docstring).
+    Комиссия за обслуживание счёта — туда же, отдельным type. fx_linked=TRUE
+    у строки-сделки — курс пункта у этого фьючерса плавает (см. LOG_HEADER),
+    open_price_rub/close_price_rub там не отражают реальный кэш-эффект."""
+    rows = []
+    for t in all_real_closed:
+        rows.append({
+            "date": t["close_date"].isoformat(), "type": "TRADE", "ticker": t["ticker"],
+            "class_code": t["class_code"], "direction": t["direction"], "qty": t["qty"],
+            "open_price_rub": round(t["open_price_rub"], 2), "close_price_rub": round(t["close_price_rub"], 2),
+            "commission_rub": round(t["commission_rub"], 2), "variation_margin_rub": "",
+            "fx_linked": "TRUE" if t.get("fx_linked") else "FALSE", "status": "closed",
+        })
+    for leg in open_legs_flat:
+        rows.append({
+            "date": leg["open_date"].isoformat(), "type": "TRADE", "ticker": leg["ticker"],
+            "class_code": leg["class_code"], "direction": leg["direction"], "qty": "",
+            "open_price_rub": round(leg["open_price_rub"], 2), "close_price_rub": "",
+            "commission_rub": round(leg["open_commission_rub"], 2), "variation_margin_rub": "",
+            "fx_linked": "TRUE" if leg.get("fx_linked") else "FALSE", "status": "open",
+        })
+    for f in account_flows:
+        if f["type"] not in ("WRITING_OFF_VARMARGIN", "ACCRUING_VARMARGIN"):
+            continue  # SERVICE_FEE/MARGIN_FEE сюда не относятся — см. TRADE_HISTORY_RECONCILE
+        rows.append({
+            "date": f["date"], "type": f["type"], "ticker": "", "class_code": "", "direction": "", "qty": "",
+            "open_price_rub": "", "close_price_rub": "", "commission_rub": "",
+            "variation_margin_rub": round(f["payment_rub"], 2), "fx_linked": "", "status": "account_level",
+        })
+    rows.sort(key=lambda r: r["date"])
+    return rows
 
 
 OPEN_HEADER = ["ticker", "class_code", "name", "side", "qty", "open_date", "open_price_rub", "open_price_quote"]
@@ -552,6 +640,7 @@ def real_trade_to_row(t):
         t["close_date"].isoformat(), round(t["close_price_rub"], 2), round(t["close_price"], 4),
         round(t["close_commission"], 2),
         round(t["gross_pnl"], 2), round(t["commission"], 2), round(t["net_pnl"], 2),
+        bool(t.get("fx_linked")),
     ]
 
 
@@ -677,7 +766,7 @@ def main():
                     "ticker": info["ticker"], "class_code": info["class_code"],
                     "direction": "long" if leg["side"] == "buy" else "short",
                     "open_date": leg["date"], "open_price_rub": leg["price_rub"], "open_price_quote": leg["price"],
-                    "open_commission_rub": leg["commission"],
+                    "open_commission_rub": leg["commission"], "fx_linked": bool(info.get("fx_linked")),
                 })
 
         open_rows = [OPEN_HEADER]
@@ -694,6 +783,14 @@ def main():
 
         reconciliation = compute_reconciliation(all_real_closed, open_legs_flat, all_account_flows)
 
+        # --- сводная таблица: сделки (своя комиссия) + отдельно вариационная
+        # маржа (свой столбец, не привязана к сделке, в P&L строки не входит)
+        ledger = build_ledger_rows(all_real_closed, open_legs_flat, all_account_flows)
+        ledger_rows = [LEDGER_HEADER] + [[r[c] for c in LEDGER_HEADER] for r in ledger]
+        with LEDGER_PATH.open("w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(ledger_rows)
+        print(f"Сохранён {LEDGER_PATH}: {len(ledger)} строк (сделки + операции маржи)")
+
         # --- пересборка ИТОГОВОГО лога: все сигналы + join с реальными сделками ---
         signals = load_signal_journal()
         joined = join_signals_with_real_trades(signals, all_real_closed, open_legs_flat)
@@ -705,7 +802,7 @@ def main():
                 num(r["planned_entry"]), num(r["planned_stop"]), num(r["planned_target"]),
                 r["trade_status"], r["real_open_date"], r["real_open_price_rub"], r["real_open_price_quote"],
                 r["open_commission_rub"], r["real_close_date"], r["real_close_price_rub"], r["real_close_price_quote"],
-                r["close_commission_rub"], r["gross_pnl_rub"], r["commission_rub"], r["net_pnl_rub"],
+                r["close_commission_rub"], r["gross_pnl_rub"], r["commission_rub"], r["net_pnl_rub"], r["fx_linked"],
             ])
         with LOG_PATH.open("w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerows(log_rows)
@@ -737,7 +834,7 @@ def main():
     ]
 
     if args.push_sheets:
-        push_combined_to_sheets(log_rows, open_rows, reconcile_rows)
+        push_combined_to_sheets(log_rows, open_rows, reconcile_rows, ledger_rows)
 
     # Состояние (для реальных сделок) сохраняем всегда, включая --rebuild —
     # after любого прогона open_legs это корректный текущий снимок
