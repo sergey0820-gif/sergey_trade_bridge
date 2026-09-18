@@ -25,6 +25,16 @@ dynamic_stop_manager.py
 3. Двигаем SL только "в сторону уменьшения риска":
    - для лонга: SL не опускаем ниже старого;
    - для шорта: SL не поднимаем выше старого.
+4. Give-back-защита (GIVEBACK_ENABLED=1 в .env, отдельно от базового
+   трейлинга выше) — от "зашёл уверенно, потом потух, развернулся": если
+   позиция хоть раз дошла до GIVEBACK_MIN_PEAK_R (в R от исходного риска),
+   а потом текущий R просел от этого пика больше чем на GIVEBACK_FRAC —
+   закрываем немедленно, подтягивая SL к текущей цене (не новый ордер —
+   предельный случай того же движения уже стоящего стопа, см. docstring
+   apply_new_sl). Найдено бэктестом (backtest_ema921.py, 12+ мес, поверх
+   min_volume_ratio=2.5): портфельный CAGR +996% против +831% без этой
+   защиты, устойчиво на обеих независимых половинах периода — см.
+   STRATEGY.md, "Открытые вопросы" п.9.
 """
 
 import logging
@@ -56,6 +66,7 @@ from tinkoff.invest import (
 # а не изредка.
 from trade_utils.price_helper import place_stop_order
 from initial_stop_cache import get_initial_sl, record_initial_sl
+from peak_r_cache import update_peak_r, clear_peak_r
 
 # -----------------------------------------------------------------------------
 # Настройки логирования
@@ -210,6 +221,13 @@ def load_config():
         "activate_r": _f("DYN_ACTIVATE_R", 1.0),
         "trail_start_r": _f("DYN_TRAIL_START_R", 2.0),
         "trail_gap_r": _f("DYN_TRAIL_GAP_R", 0.5),
+        # Give-back-защита — отдельный, независимо включаемый механизм
+        # (см. docstring модуля, п.4). Выключен по умолчанию, как и весь
+        # остальной динамик (DYNAMIC_STOPS_ENABLED) — осознанный шаг перед
+        # включением в бою.
+        "giveback_enabled": os.environ.get("GIVEBACK_ENABLED", "0") == "1",
+        "giveback_min_peak_r": _f("GIVEBACK_MIN_PEAK_R", 0.5),
+        "giveback_frac": _f("GIVEBACK_FRAC", 0.5),
     }
     return cfg
 
@@ -476,6 +494,43 @@ def compute_new_sl_price(
         return grid_price
 
 
+def compute_giveback_exit_price(
+    direction: str,
+    current: float,
+    old_sl: float,
+    min_step: float,
+) -> Optional[float]:
+    """
+    Экстренный выход по give-back-защите ("зашёл уверенно, потом потух,
+    развернулся" — см. docstring модуля, п.4) — НЕ новый ордер, а предельный
+    случай того же движения уже стоящего стопа: подтягиваем SL вплотную к
+    текущей цене (на 1 шаг цены безопаснее рынка), чтобы уже выставленная
+    на бирже стоп-заявка сработала почти немедленно. Условие "когда звать
+    эту функцию" (пик R >= GIVEBACK_MIN_PEAK_R и текущий R просел от пика
+    больше чем на GIVEBACK_FRAC) проверяет вызывающий код (main()) — эта
+    функция только считает безопасную цену, куда двигать, и никогда не
+    расширяет риск: если получившаяся цена не строже старого SL — вернёт
+    None (как и compute_new_sl_price).
+    """
+    if direction not in ("long", "short"):
+        return None
+    if min_step <= 0:
+        return None
+
+    if direction == "long":
+        candidate = current - min_step
+        grid_price = math.floor(candidate / min_step) * min_step
+        if grid_price <= old_sl:
+            return None
+        return grid_price
+    else:
+        candidate = current + min_step
+        grid_price = math.ceil(candidate / min_step) * min_step
+        if grid_price >= old_sl:
+            return None
+        return grid_price
+
+
 def apply_new_sl(
     client,
     account_id: str,
@@ -658,11 +713,15 @@ def main():
         return 1
 
     logger.info(
-        "🚦 Запуск dynamic_stop_manager.py (apply_changes=%s, activate_r=%.2f, trail_start_r=%.2f, trail_gap_r=%.2f)",
+        "🚦 Запуск dynamic_stop_manager.py (apply_changes=%s, activate_r=%.2f, trail_start_r=%.2f, "
+        "trail_gap_r=%.2f, giveback_enabled=%s, giveback_min_peak_r=%.2f, giveback_frac=%.2f)",
         cfg["apply_changes"],
         cfg["activate_r"],
         cfg["trail_start_r"],
         cfg["trail_gap_r"],
+        cfg["giveback_enabled"],
+        cfg["giveback_min_peak_r"],
+        cfg["giveback_frac"],
     )
 
     with Client(token) as client:
@@ -769,6 +828,38 @@ def main():
                         "сохраняю на будущее.",
                         ticker, class_code, old_sl,
                     )
+
+            if cfg["giveback_enabled"] and initial_sl is not None:
+                risk_per_unit = (entry - initial_sl) if direction == "long" else (initial_sl - entry)
+                if risk_per_unit > 0:
+                    profit = (current - entry) if direction == "long" else (entry - current)
+                    current_r = profit / risk_per_unit
+                    peak_r = update_peak_r(uid, current_r)
+                    if peak_r >= cfg["giveback_min_peak_r"] and current_r <= peak_r * (1 - cfg["giveback_frac"]):
+                        giveback_price = compute_giveback_exit_price(direction, current, old_sl, min_step)
+                        if giveback_price is not None:
+                            logger.warning(
+                                "🛑 Give-back выход: %s (%s) пик=%.2fR, сейчас=%.2fR "
+                                "(откат от пика %.0f%%, порог %.0f%%) — двигаю SL к рынку: %.4f",
+                                ticker, class_code, peak_r, current_r,
+                                (1 - current_r / peak_r) * 100 if peak_r else 0.0,
+                                cfg["giveback_frac"] * 100, giveback_price,
+                            )
+                            apply_new_sl(
+                                client=client, account_id=account_id, position_info=pos,
+                                instr_info=info, current_price=current, sl_order=sl_order,
+                                new_sl_price=giveback_price, apply_changes=cfg["apply_changes"],
+                                initial_sl=initial_sl, initial_sl_source=initial_sl_source,
+                            )
+                            _append_stop_event(
+                                ticker=ticker, class_code=class_code, direction=direction, uid=uid,
+                                stage="giveback_exit", old_sl=old_sl, new_sl=giveback_price, entry=entry,
+                                initial_sl=initial_sl, initial_sl_source=initial_sl_source,
+                                post_breakeven=(peak_r >= cfg["activate_r"]),
+                            )
+                            if cfg["apply_changes"]:
+                                clear_peak_r(uid)
+                            continue
 
             new_sl = compute_new_sl_price(
                 direction=direction,
