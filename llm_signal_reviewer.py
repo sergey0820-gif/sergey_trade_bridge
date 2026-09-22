@@ -39,6 +39,25 @@ decision=reject (безопасное поведение по умолчанию
 
 auto_executor.py читает candidates_llm_approved.csv, а не candidates_ai.csv
 напрямую — вход в реальный ордер требует одобрения и правил, и LLM.
+
+ИИ-СЛОЙ ОТКЛЮЧЁН (LLM_REVIEW_ENABLED=0 в .env, 2026-09-22): три раунда
+ограниченных A/B-тестов промпта (по 24 уже известных по исходу сигнала,
+на реальном API) не смогли поднять точность вердикта выше 50% (уровень
+случайности) — ни после удаления rules_score из payload, ни после
+добавления производной метрики тренда, ни после добавления сырой
+15-дневной истории цены и объёма. Систематическая причина: модель
+трактует любой контр-ход в недавних барах как противоречие сигналу, хотя
+для этой стратегии откат внутри тренда — нормальная точка входа.
+Ретроспективный разбор logs/signal_journal.csv также показал, что 98%
+отклонений LLM ссылались на rules_score/порог (модель в основном
+пересказывала уже посчитанный скор, а не находила независимые
+противоречия), и что rejected_by_llm имел ЛУЧШУЮ экспектацию (-0.123R),
+чем реально исполненные сделки (-0.293R) — то есть слой не просто
+бесполезен, а слегка вреден. При LLM_REVIEW_ENABLED=0 весь блок вызова
+API пропускается: все кандидаты, прошедшие формальные правила, идут
+дальше без обращения к API (см. main()). Оставлено переключаемым (не
+удалено), чтобы вернуться при появлении лучшей идеи промпта/контекста —
+см. STRATEGY.md, "Открытые вопросы".
 """
 
 from __future__ import annotations
@@ -88,6 +107,10 @@ else:
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 LLM_REVIEW_MODEL = os.getenv("LLM_REVIEW_MODEL", "claude-haiku-4-5-20251001")
 LLM_REVIEW_TIMEOUT_SEC = float(os.getenv("LLM_REVIEW_TIMEOUT_SEC", "15"))
+# По умолчанию включён (сохраняет прежнее поведение для любого окружения,
+# где этот флаг не задан явно) — сейчас в .env боевого счёта стоит "0",
+# см. docstring модуля выше.
+LLM_REVIEW_ENABLED = os.getenv("LLM_REVIEW_ENABLED", "1") == "1"
 
 OUTPUT_COLUMNS = [
     "ticker", "class_code", "side", "entry", "stop", "target", "rsi_d1", "rsi_h4",
@@ -288,6 +311,27 @@ def write_output(rows: list[dict]) -> None:
 
 def main() -> int:
     logger.info("=== llm_signal_reviewer.py START ===")
+
+    if not LLM_REVIEW_ENABLED:
+        logger.warning(
+            "🚫 LLM_REVIEW_ENABLED=0 — ИИ-слой отключён (см. docstring модуля). "
+            "Все кандидаты, прошедшие формальные правила, пропускаются дальше "
+            "БЕЗ вызова API."
+        )
+        candidates = read_approved_from_rules()
+        approved_rows = []
+        for row in candidates:
+            row_out = dict(row)
+            row_out["llm_decision"] = "approve"
+            row_out["llm_reasoning"] = "LLM review отключён (LLM_REVIEW_ENABLED=0) — пропущено без вызова API"
+            approved_rows.append(row_out)
+        write_output(approved_rows)
+        logger.info(
+            "[OK] ИИ-слой отключён: пропущено %d/%d кандидатов без вызова API -> %s",
+            len(approved_rows), len(candidates), CANDIDATES_LLM_APPROVED,
+        )
+        logger.info("=== llm_signal_reviewer.py END ===")
+        return 0
 
     if not ANTHROPIC_API_KEY:
         logger.error(
