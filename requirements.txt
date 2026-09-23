@@ -3,7 +3,7 @@ anthropic==0.45.0
 google-auth==2.56.2
 grpcio==1.76.0
 gspread==6.2.1
-numpy==1.24.4
+numpy==2.5.3
 pandas==2.3.3
 pandas-ta @ file:archives/pandas_ta-0.3.14b0-py3-none-any.whl#sha256=2a01c47a452add8f06f8581286587b1939c05f5a2d48af64facd0a399976189f
 python-dotenv==1.0.1
