@@ -16,6 +16,7 @@ Mode = Literal["trend", "pullback", "breakout"]
 SWING_LOOKBACK_DAYS = 90  # окно поиска swing high/low на D1
 SWING_ORDER = 3  # фрактал: свинг должен быть экстремумом среди ±SWING_ORDER баров
 MIN_TARGET_RR = 1.5  # минимальный R:R, чтобы взять структурный уровень как цель
+MAX_TARGET_RR = 4.0  # потолок R:R для структурной цели — см. _structural_target
 
 @dataclass
 class TradeSetup:
@@ -106,11 +107,25 @@ def _structural_target(
 ) -> Tuple[float, str]:
     """
     Цель — ближайший swing high/low на D1 (за последние SWING_LOOKBACK_DAYS),
-    который даёт R:R >= MIN_TARGET_RR. Если ближайший свинг даёт R:R ниже
-    порога — ищем следующий, более дальний. Если ни один свинг в окне не
-    подходит (или свингов вообще нет) — откатываемся на старую логику 3R.
+    который даёт MIN_TARGET_RR <= R:R <= MAX_TARGET_RR. Если ближайший свинг
+    даёт R:R ниже MIN_TARGET_RR — ищем следующий, более дальний (как раньше).
 
-    Возвращает (target_price, source), где source — "swing" или "fallback_3R".
+    Если ЕСТЬ качественный свинг (R:R >= MIN_TARGET_RR), но он оказывается
+    дальше MAX_TARGET_RR — берём фиксированные MAX_TARGET_RR вместо него, а
+    не улетаем к нему. Это фикс реального наблюдения с боевого счёта: цель
+    часто оказывалась "последним пиком" очень далеко от входа, до которого
+    цена почти никогда не доходит — бэктест (backtest_target_variants.py,
+    2026-09-23, 60 тикеров/12 мес.) подтвердил: 28% сделок получали цель с
+    R:R > 4, и из них цена реально достигала цели лишь в 8.3% случаев. Капа
+    на 4R даёт +62% к суммарному R за тот же период по сравнению со старой
+    (некапнутой) версией, при том же win rate и просадке.
+
+    Если ни один свинг в окне вообще не подходит (нет свингов, или все
+    ближе MIN_TARGET_RR) — откатываемся на старую логику 3R.
+
+    Возвращает (target_price, source), где source — "swing" (уложился в
+    капу), "capped" (был качественный свинг, но дальше MAX_TARGET_RR — взяли
+    фикс. потолок) или "fallback_3R" (нет ни одного подходящего свинга).
     """
     lookback = df_d1.tail(SWING_LOOKBACK_DAYS) if len(df_d1) > SWING_LOOKBACK_DAYS else df_d1
     levels = _find_swing_levels(lookback, side)
@@ -120,11 +135,19 @@ def _structural_target(
     else:
         candidates = sorted((lvl for lvl in levels if lvl < entry), reverse=True)
 
+    has_qualifying_swing = False
     if risk > 0:
         for level in candidates:
             rr = abs(level - entry) / risk
             if rr >= MIN_TARGET_RR:
-                return level, "swing"
+                has_qualifying_swing = True
+                if rr <= MAX_TARGET_RR:
+                    return level, "swing"
+                break  # candidates отсортированы по расстоянию -> дальше будет только хуже
+
+    if has_qualifying_swing:
+        capped = entry + (risk * MAX_TARGET_RR) if side == "long" else entry - (risk * MAX_TARGET_RR)
+        return capped, "capped"
 
     fallback = entry + (risk * 3) if side == "long" else entry - (risk * 3)
     return fallback, "fallback_3R"
@@ -224,8 +247,9 @@ def analyze_trade_setup(
     stop = entry - (atr_val * 2) if side == "long" else entry + (atr_val * 2)
     dist = abs(entry - stop)
 
-    # Цель — ближайший структурный уровень (swing high/low на D1) с R:R >= 1.5,
-    # иначе следующий более дальний свинг, иначе fallback на фиксированные 3R
+    # Цель — ближайший структурный уровень (swing high/low на D1) с
+    # 1.5 <= R:R <= 4.0, иначе фикс. потолок 4R (не улетаем к дальнему пику),
+    # иначе fallback на фиксированные 3R (см. _structural_target)
     target, target_source = _structural_target(df_d1, side, entry, dist)
     reason = f"{reason} | target={target_source}"
 

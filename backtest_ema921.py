@@ -432,6 +432,7 @@ def main() -> int:
     naive_annual_return_pct = trades_per_year * expectancy_r * risk_per_trade_pct
 
     swing_n = sum(1 for t in closed if t.target_source == "swing")
+    capped_n = sum(1 for t in closed if t.target_source == "capped")
     fallback_n = sum(1 for t in closed if t.target_source == "fallback_3R")
 
     class_lines = []
@@ -458,7 +459,8 @@ def main() -> int:
         f"Экспектация на сделку: {expectancy_r:+.3f}R\n"
         f"Макс. просадка (в R): {max_dd:.2f}R\n"
         f"По классам:\n" + "\n".join(class_lines) + "\n"
-        f"Цель: swing={swing_n} ({swing_n/len(closed)*100:.0f}%)  fallback_3R={fallback_n} ({fallback_n/len(closed)*100:.0f}%)\n"
+        f"Цель: swing={swing_n} ({swing_n/len(closed)*100:.0f}%)  capped={capped_n} ({capped_n/len(closed)*100:.0f}%)  "
+        f"fallback_3R={fallback_n} ({fallback_n/len(closed)*100:.0f}%)\n"
         f"{'—' * 60}\n"
         f"Грубая оценка годовой доходности (без сложного процента, без\n"
         f"учёта MAX_OPEN_POSITIONS/лимита маржи, без LLM-барьера,\n"
