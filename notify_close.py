@@ -16,6 +16,7 @@ ORDERS_DIR = BASE / "orders"
 load_dotenv(dotenv_path=ENV_PATH)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
+MSG_PREFIX = os.getenv("TELEGRAM_MSG_PREFIX", "")
 
 
 def safe_float(x, default=0.0):
@@ -111,7 +112,7 @@ async def main():
         raise RuntimeError("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы в .env")
 
     bot = Bot(token=BOT_TOKEN)
-    text = summarize()
+    text = MSG_PREFIX + summarize()
     await bot.send_message(chat_id=CHAT_ID, text=text)
 
     if OPS_CSV.exists() and OPS_CSV.stat().st_size > 0:

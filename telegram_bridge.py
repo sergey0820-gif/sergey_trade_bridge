@@ -61,6 +61,7 @@ else:
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_MSG_PREFIX = os.getenv("TELEGRAM_MSG_PREFIX", "")
 CANDIDATES_LLM_APPROVED = BASE_DIR / "candidates_llm_approved.csv"
 STATE_PATH = STATE_DIR / "telegram_state.json"
 RESEND_COOLDOWN_MIN = int(os.getenv("RESEND_COOLDOWN_MIN", "240"))
@@ -155,6 +156,10 @@ def _fmt(v: Optional[float]) -> str:
 
 
 def build_text(c: Candidate) -> str:
+    return TELEGRAM_MSG_PREFIX + _build_text_body(c)
+
+
+def _build_text_body(c: Candidate) -> str:
     side_emoji = "🟢 LONG" if c.side == "long" else "🔴 SHORT"
     asset = "future" if c.class_code == "SPBFUT" else "share"
     reasoning = (c.llm_reasoning or "").strip()

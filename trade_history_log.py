@@ -119,8 +119,9 @@ AUTO_STRATEGY_START = datetime(2026, 8, 1, tzinfo=timezone.utc)
 DEFAULT_LOOKBACK_DAYS = 14  # если state ещё нет — с чего начать первый инкрементальный запуск
 SIGNAL_MATCH_WINDOW_HOURS = 24  # макс. задержка между сигналом и реальным входом в позицию
 
-WS_TITLE = "TRADE_HISTORY"
-WS_OPEN_TITLE = "TRADE_HISTORY_OPEN"
+_SHEETS_TAB_SUFFIX = os.getenv("SHEETS_TAB_SUFFIX", "")
+WS_TITLE = "TRADE_HISTORY" + _SHEETS_TAB_SUFFIX
+WS_OPEN_TITLE = "TRADE_HISTORY_OPEN" + _SHEETS_TAB_SUFFIX
 
 
 def load_state() -> dict:
@@ -554,8 +555,8 @@ def _gsheets_client():
     return gc.open_by_key(sheet_id), sheet_id
 
 
-WS_RECONCILE_TITLE = "TRADE_HISTORY_RECONCILE"
-WS_LEDGER_TITLE = "TRADE_HISTORY_LEDGER"
+WS_RECONCILE_TITLE = "TRADE_HISTORY_RECONCILE" + _SHEETS_TAB_SUFFIX
+WS_LEDGER_TITLE = "TRADE_HISTORY_LEDGER" + _SHEETS_TAB_SUFFIX
 
 
 def push_combined_to_sheets(log_rows, open_rows, reconcile_rows, ledger_rows):

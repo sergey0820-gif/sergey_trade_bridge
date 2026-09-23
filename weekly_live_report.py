@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -341,8 +342,8 @@ def section_dynamic_stop_health(since: datetime, metrics: dict) -> str:
 # Google Sheets (--push-sheets) — переиспользует инфраструктуру sheet_bridge.py
 # --------------------------------------------------------------------------
 
-WS_SUMMARY = "WEEKLY_SUMMARY"
-WS_FULL = "WEEKLY_FULL"
+WS_SUMMARY = "WEEKLY_SUMMARY" + os.getenv("SHEETS_TAB_SUFFIX", "")
+WS_FULL = "WEEKLY_FULL" + os.getenv("SHEETS_TAB_SUFFIX", "")
 SUMMARY_HEADER = [
     "run_ts", "days_window", "since", "signals_generated", "rules_pass", "rules_reject",
     "llm_approve", "llm_reject", "executed", "stale", "crypto_filtered", "executor_error",

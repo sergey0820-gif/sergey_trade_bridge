@@ -126,7 +126,7 @@ def resolve_outcome(client: Client, figi: str, row: dict) -> Optional[dict]:
     return {"outcome": "timeout_unresolved", "outcome_r_multiple": 0, "outcome_exit_price": "", "outcome_exit_time": ""}
 
 
-WS_MONTHLY_REVIEW_TITLE = "MONTHLY_SIGNAL_REVIEW"
+WS_MONTHLY_REVIEW_TITLE = "MONTHLY_SIGNAL_REVIEW" + os.getenv("SHEETS_TAB_SUFFIX", "")
 
 
 def push_summary_to_sheets(period: str, resolved: "pd.DataFrame") -> None:
