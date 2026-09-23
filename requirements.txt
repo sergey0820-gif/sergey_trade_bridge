@@ -7,11 +7,12 @@ grpcio==1.76.0
 gspread==6.2.1
 numpy==2.5.3
 pandas==2.3.3
-pandas-ta @ file:archives/pandas_ta-0.3.14b0-py3-none-any.whl#sha256=2a01c47a452add8f06f8581286587b1939c05f5a2d48af64facd0a399976189f
+pandas-ta @ file:archives/pandas_ta-0.3.14b0-py3-none-any.whl#sha256=0a653c6a5f57322331100b68a25e2673307ed70ce1b06234f4cd116aa5854cd7
 protobuf==4.25.8
 python-dotenv==1.0.1
 python-telegram-bot==20.3
 requests==2.32.5
+setuptools==75.6.0
 # tinkoff-investments==0.2.0b117 больше не резолвится через PyPI (снят с
 # индекса, 2026-09-23 — обнаружено при установке на Russian Pi). Пакет
 # физически ставится вручную (см. README/MIGRATION — распаковать
@@ -19,3 +20,19 @@ requests==2.32.5
 # site-packages), поэтому его транзитивные зависимости (cachetools,
 # deprecation, protobuf) закреплены выше явно — раньше их подтягивал
 # резолвер pip по метаданным самого пакета, теперь резолвить их не с чего.
+#
+# setuptools==75.6.0: на Python 3.13 самый свежий setuptools (в pip по
+# умолчанию) полностью убрал pkg_resources, а pandas_ta==0.3.14b0 его
+# импортирует. 75.6.0 — минимальная версия, где pkg_resources ещё есть
+# (с DeprecationWarning) и которая при этом ставится на 3.13 (более старые,
+# включая версию Denmark Pi 65.5.0, падают на 3.13 с ошибкой
+# pkgutil.ImpImporter — убран в 3.13). На Denmark Pi (Python 3.11) эта
+# версия тоже работает, не меняет поведение.
+#
+# archives/pandas_ta-0.3.14b0-py3-none-any.whl пропатчен на Mac 2026-09-23:
+# в pandas_ta/momentum/squeeze_pro.py, overlap/ema.py, overlap/vidya.py
+# заменено 3 места numpy.NaN (заглавные, убраны в numpy>=2.0) на numpy.nan
+# (то же самое значение на любой версии numpy) — иначе ImportError при
+# импорте pandas_ta с numpy==2.5.3. Проверено на Mac: числовой парити-тест
+# (RSI/EMA/ATR на детерминированных данных) даёт РОВНО те же значения, что
+# и старый непропатченный wheel на Denmark Pi (numpy 1.24.4).
