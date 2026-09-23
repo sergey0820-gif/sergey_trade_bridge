@@ -1,4 +1,5 @@
 aiogram==3.30.0
+aiohttp-socks==0.12.0
 anthropic==0.45.0
 cachetools==5.5.2
 deprecation==2.1.0
@@ -13,6 +14,7 @@ python-dotenv==1.0.1
 python-telegram-bot==20.3
 requests==2.32.5
 setuptools==75.6.0
+socksio==1.0.0
 # tinkoff-investments==0.2.0b117 больше не резолвится через PyPI (снят с
 # индекса, 2026-09-23 — обнаружено при установке на Russian Pi). Пакет
 # физически ставится вручную (см. README/MIGRATION — распаковать
@@ -36,3 +38,9 @@ setuptools==75.6.0
 # импорте pandas_ta с numpy==2.5.3. Проверено на Mac: числовой парити-тест
 # (RSI/EMA/ATR на детерминированных данных) даёт РОВНО те же значения, что
 # и старый непропатченный wheel на Denmark Pi (numpy 1.24.4).
+#
+# aiohttp-socks/socksio: поддержка SOCKS5-прокси (TELEGRAM_PROXY_URL, по
+# умолчанию не задан — Denmark Pi не использует) для telegram_bridge.py/
+# notify_close.py/weekly_live_report.py — на Russian Pi прямой доступ к
+# api.telegram.org заблокирован на уровне сети/провайдера, трафик идёт
+# через SSH SOCKS5-туннель на Denmark Pi (systemd-юнит на Russian Pi).

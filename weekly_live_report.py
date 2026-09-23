@@ -421,20 +421,24 @@ def send_telegram_notification(sheet_url: str, since: datetime, days: int) -> bo
 
     try:
         from telegram import Bot
+        from telegram.request import HTTPXRequest
     except ImportError:
         print("[Telegram] python-telegram-bot не установлен — пропуск")
         return False
 
     import asyncio
 
+    proxy_url = _os.getenv("TELEGRAM_PROXY_URL", "")
     text = (
+        _os.getenv("TELEGRAM_MSG_PREFIX", "") +
         f"📊 Еженедельный отчёт по автостратегии готов "
         f"(окно: последние {days} дней, с {since.date()}).\n"
         f"Подробности: {sheet_url}"
     )
 
     async def _send():
-        bot = Bot(token=token)
+        request = HTTPXRequest(proxy_url=proxy_url) if proxy_url else None
+        bot = Bot(token=token, request=request)
         await bot.send_message(chat_id=chat_id, text=text)
 
     asyncio.run(_send())

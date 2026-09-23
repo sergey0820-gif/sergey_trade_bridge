@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from aiogram import Bot
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import FSInputFile
 
 BASE = Path(__file__).parent
@@ -17,6 +18,7 @@ load_dotenv(dotenv_path=ENV_PATH)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 MSG_PREFIX = os.getenv("TELEGRAM_MSG_PREFIX", "")
+PROXY_URL = os.getenv("TELEGRAM_PROXY_URL", "")
 
 
 def safe_float(x, default=0.0):
@@ -111,7 +113,8 @@ async def main():
     if not BOT_TOKEN or not CHAT_ID:
         raise RuntimeError("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы в .env")
 
-    bot = Bot(token=BOT_TOKEN)
+    session = AiohttpSession(proxy=PROXY_URL) if PROXY_URL else None
+    bot = Bot(token=BOT_TOKEN, session=session)
     text = MSG_PREFIX + summarize()
     await bot.send_message(chat_id=CHAT_ID, text=text)
 

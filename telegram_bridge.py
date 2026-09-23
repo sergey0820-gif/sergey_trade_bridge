@@ -36,6 +36,7 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 from telegram import Bot
+from telegram.request import HTTPXRequest
 
 BASE_DIR = Path(__file__).resolve().parent
 LOGS_DIR = BASE_DIR / "logs"
@@ -62,6 +63,7 @@ else:
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TELEGRAM_MSG_PREFIX = os.getenv("TELEGRAM_MSG_PREFIX", "")
+TELEGRAM_PROXY_URL = os.getenv("TELEGRAM_PROXY_URL", "")
 CANDIDATES_LLM_APPROVED = BASE_DIR / "candidates_llm_approved.csv"
 STATE_PATH = STATE_DIR / "telegram_state.json"
 RESEND_COOLDOWN_MIN = int(os.getenv("RESEND_COOLDOWN_MIN", "240"))
@@ -189,7 +191,8 @@ async def send_notifications() -> int:
         return 0
 
     st = _load_state()
-    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    request = HTTPXRequest(proxy_url=TELEGRAM_PROXY_URL) if TELEGRAM_PROXY_URL else None
+    bot = Bot(token=TELEGRAM_BOT_TOKEN, request=request)
 
     sent = 0
     for c in candidates:
