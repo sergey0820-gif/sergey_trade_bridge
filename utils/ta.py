@@ -18,6 +18,12 @@ SWING_ORDER = 3  # фрактал: свинг должен быть экстре
 MIN_TARGET_RR = 1.5  # минимальный R:R, чтобы взять структурный уровень как цель
 MAX_TARGET_RR = 4.0  # потолок R:R для структурной цели — см. _structural_target
 
+# === Параметры структурного стопа (вместо фиксированного 2×ATR) ===
+STOP_LOOKBACK_DAYS = 20  # окно поиска "волны" для стопа — короче, чем у цели (90д): важна свежая структура
+STOP_MIN_ATR_MULT = 0.5  # нижняя граница риска — не уже (шум/whipsaw)
+STOP_MAX_ATR_MULT = 3.0  # верхняя граница риска — не шире (не раздувать риск на сделку)
+STOP_BUFFER_ATR_MULT = 0.1  # запас за уровнем, чтобы не стоять ровно на хае/лоу
+
 @dataclass
 class TradeSetup:
     mode: Optional[Mode]
@@ -100,6 +106,67 @@ def _find_swing_levels(df: pd.DataFrame, side: Side, order: int = SWING_ORDER) -
             if lows[i] == window.min():
                 levels.append(float(lows[i]))
     return levels
+
+
+def _structural_stop(df_d1: pd.DataFrame, side: Side, entry: float, atr_val: float) -> Tuple[float, str]:
+    """
+    Стоп "за волной" — ближайший swing low (long) / swing high (short) на
+    D1 за последние STOP_LOOKBACK_DAYS (короче окна цели: для стопа важна
+    свежая структура, не любая историческая), с буфером
+    STOP_BUFFER_ATR_MULT×ATR за уровнем (не стоять ровно на хае/лоу). Риск
+    (расстояние вход-стоп) ограничен коридором [STOP_MIN_ATR_MULT,
+    STOP_MAX_ATR_MULT]×ATR: слишком тесный структурный стоп (шум, whipsaw)
+    расширяется до минимума, слишком широкий (рынок давно убежал от
+    последнего экстремума) сужается до максимума. Свинг-хай/лоу ищем тем же
+    _find_swing_levels, что и цель, но с ИНВЕРТИРОВАННЫМ side (для long
+    нужен swing LOW — зовём с side="short", и наоборот).
+
+    Если подходящего свинга в окне нет вообще — fallback на фиксированные
+    2×ATR (старая логика).
+
+    Найдено бэктестом (backtest_target_variants_v2.py, 2026-09-24, 60
+    тикеров/12 мес., см. STRATEGY.md п.10): экспектация +0.084R против
+    +0.042R у фиксированного 2×ATR (было до этого изменения), просадка
+    93.2R против 223.7R (более чем вдвое ниже) при почти том же win rate.
+    БЕЗ коридора-ограничителя (голый структурный стоп) — сильно хуже
+    боевой логики (экспектация уходит в минус, позиции виснут в среднем
+    530 баров вместо ~25): структурный уровень иногда оказывается в 10+
+    ATR от входа, если рынок давно убежал от последнего экстремума —
+    коридор обязателен, это не опция.
+
+    Возвращает (stop_price, source): "structural" (свинг уложился в
+    коридор как есть), "structural_bounded_min"/"structural_bounded_max"
+    (свинг найден, но обрезан по коридору) или "fixed_2atr" (свинга в окне
+    нет вообще, или ATR некорректен).
+    """
+    if not atr_val or atr_val <= 0:
+        fallback = entry - atr_val * 2 if side == "long" else entry + atr_val * 2
+        return fallback, "fixed_2atr"
+
+    lookback = df_d1.tail(STOP_LOOKBACK_DAYS) if len(df_d1) > STOP_LOOKBACK_DAYS else df_d1
+    opposite_side: Side = "short" if side == "long" else "long"
+    levels = _find_swing_levels(lookback, opposite_side)
+
+    if side == "long":
+        candidates = sorted((lvl for lvl in levels if lvl < entry), reverse=True)  # ближайший снизу
+    else:
+        candidates = sorted(lvl for lvl in levels if lvl > entry)  # ближайший сверху
+
+    if not candidates:
+        fallback = entry - atr_val * 2 if side == "long" else entry + atr_val * 2
+        return fallback, "fixed_2atr"
+
+    buffer = atr_val * STOP_BUFFER_ATR_MULT
+    level = candidates[0]
+    stop = level - buffer if side == "long" else level + buffer
+    risk = abs(entry - stop)
+
+    min_risk, max_risk = atr_val * STOP_MIN_ATR_MULT, atr_val * STOP_MAX_ATR_MULT
+    if risk < min_risk:
+        return (entry - min_risk if side == "long" else entry + min_risk), "structural_bounded_min"
+    if risk > max_risk:
+        return (entry - max_risk if side == "long" else entry + max_risk), "structural_bounded_max"
+    return stop, "structural"
 
 
 def _structural_target(
@@ -242,16 +309,19 @@ def analyze_trade_setup(
     entry = df_h4["close"].iloc[-1]
     atr_val = a_h1.iloc[-1]
 
-    # Стоп-лосс на 2 ATR (дальше его подхватывает dynamic_stop_manager.py —
-    # переводит в безубыток на +1R, трейлит с +2R)
-    stop = entry - (atr_val * 2) if side == "long" else entry + (atr_val * 2)
+    # Стоп — структурный уровень (swing low/high на D1 за последние 20
+    # дней, "за волной"), с коридором 0.5-3×ATR и буфером 0.1×ATR за
+    # уровнем; иначе фикс. 2×ATR (см. _structural_stop). Дальше стоп
+    # подхватывает dynamic_stop_manager.py — переводит в безубыток на +1R,
+    # трейлит с +2R (от ЭТОГО стопа как исходного, риск не пересчитывается).
+    stop, stop_source = _structural_stop(df_d1, side, entry, atr_val)
     dist = abs(entry - stop)
 
     # Цель — ближайший структурный уровень (swing high/low на D1) с
     # 1.5 <= R:R <= 4.0, иначе фикс. потолок 4R (не улетаем к дальнему пику),
     # иначе fallback на фиксированные 3R (см. _structural_target)
     target, target_source = _structural_target(df_d1, side, entry, dist)
-    reason = f"{reason} | target={target_source}"
+    reason = f"{reason} | stop={stop_source} | target={target_source}"
 
     return TradeSetup(
         mode="trend",
