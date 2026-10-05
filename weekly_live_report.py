@@ -346,13 +346,18 @@ REAL_TRADES_CSV = LOGS_DIR / "trade_history_real_trades.csv"
 OPEN_POSITIONS_CSV = LOGS_DIR / "trade_history_open_positions.csv"
 
 
-def section_weekly_trades_pnl(since: datetime, metrics: dict) -> tuple[str, list[dict]]:
+def section_weekly_trades_pnl(since: datetime, metrics: dict, until: Optional[datetime] = None) -> tuple[str, list[dict]]:
     """
     Источник — logs/trade_history_real_trades.csv (round-trip сопоставление
     открытие/закрытие уже сделано в trade_history_log.py, здесь просто
     фильтруем по периоду) и logs/trade_history_open_positions.csv (ещё не
-    закрытые). Возвращает (текст для отчёта/Telegram, список закрытых
-    сделок для таблицы в Sheets/приложенного файла).
+    закрытые). until=None — верхняя граница не ограничена (поведение
+    по умолчанию: "с since по сейчас"); для --last-month передаётся явно
+    конец предыдущего календарного месяца, иначе окно "уехало" бы вперёд
+    до момента самого запуска скрипта, а не до конца месяца.
+
+    Возвращает (текст для отчёта/Telegram, список закрытых сделок для
+    таблицы в Sheets/приложенного файла).
     """
     lines = ["## 6. Сделки за период", ""]
     closed_rows: list[dict] = []
@@ -366,14 +371,22 @@ def section_weekly_trades_pnl(since: datetime, metrics: dict) -> tuple[str, list
     df["open_date"] = pd.to_datetime(df["open_date"], utc=True, errors="coerce")
     df["close_date"] = pd.to_datetime(df["close_date"], utc=True, errors="coerce")
 
-    closed = df[df["close_date"] >= since].sort_values("close_date")
-    opened_and_closed = df[df["open_date"] >= since]
+    closed_mask = df["close_date"] >= since
+    opened_mask = df["open_date"] >= since
+    if until is not None:
+        closed_mask &= df["close_date"] <= until
+        opened_mask &= df["open_date"] <= until
+    closed = df[closed_mask].sort_values("close_date")
+    opened_and_closed = df[opened_mask]
 
     n_opened = len(opened_and_closed)
     if OPEN_POSITIONS_CSV.exists():
         dfo = pd.read_csv(OPEN_POSITIONS_CSV)
         dfo["open_date"] = pd.to_datetime(dfo["open_date"], utc=True, errors="coerce")
-        n_opened += len(dfo[dfo["open_date"] >= since])
+        open_mask = dfo["open_date"] >= since
+        if until is not None:
+            open_mask &= dfo["open_date"] <= until
+        n_opened += len(dfo[open_mask])
 
     n_closed = len(closed)
     turnover = float((closed["open_price_rub"] * closed["qty"]).sum()
@@ -564,18 +577,19 @@ def main():
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
+    until: Optional[datetime] = None
     if args.last_month:
         first_of_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        last_month_end = first_of_this_month - timedelta(seconds=1)
-        since = last_month_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        days = (now - since).days
+        until = first_of_this_month - timedelta(seconds=1)  # конец предыдущего месяца, напр. 2026-09-30 23:59:59
+        since = until.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        days = (until - since).days + 1
     else:
         since = now - timedelta(days=args.days)
         days = args.days
 
     run_ts = now.isoformat()
     metrics: dict = {}
-    trades_summary_text, closed_trades = section_weekly_trades_pnl(since, metrics)
+    trades_summary_text, closed_trades = section_weekly_trades_pnl(since, metrics, until=until)
 
     title = "Ежемесячный отчёт по живой автостратегии" if args.last_month else "Еженедельный отчёт по живой автостратегии"
 
@@ -584,7 +598,7 @@ def main():
             f"# {title}",
             f"",
             f"Сгенерировано: {run_ts}",
-            f"Период: с {since.date()} по {now.date()} ({days} дней)",
+            f"Период: с {since.date()} по {(until or now).date()} ({days} дней)",
             f"",
             trades_summary_text,
         ]
