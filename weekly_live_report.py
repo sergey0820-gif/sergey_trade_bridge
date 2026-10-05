@@ -493,7 +493,7 @@ def push_to_google_sheets(summary: dict, full_text: str, run_ts: str, since: dat
 # Telegram (--notify-telegram) — переиспользует TELEGRAM_BOT_TOKEN/CHAT_ID
 # --------------------------------------------------------------------------
 
-def send_telegram_notification(sheet_url: str, since: datetime, days: int,
+def send_telegram_notification(sheet_url: str, since: datetime, days: int, is_monthly: bool = False,
                                  trades_summary_text: str = "", closed_trades: Optional[list] = None) -> bool:
     import os as _os
 
@@ -515,9 +515,10 @@ def send_telegram_notification(sheet_url: str, since: datetime, days: int,
 
     proxy_url = _os.getenv("TELEGRAM_PROXY_URL", "")
     prefix = _os.getenv("TELEGRAM_MSG_PREFIX", "")
+    label = "Ежемесячный" if is_monthly else "Еженедельный"
     text = (
         prefix +
-        f"📊 Еженедельный отчёт по автостратегии готов "
+        f"📊 {label} отчёт по автостратегии готов "
         f"(окно: последние {days} дней, с {since.date()}).\n"
         f"Подробности: {sheet_url}"
     )
@@ -550,34 +551,59 @@ def send_telegram_notification(sheet_url: str, since: datetime, days: int,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Еженедельный отчёт по живой автостратегии")
+    parser = argparse.ArgumentParser(description="Еженедельный/ежемесячный отчёт по живой автостратегии")
     parser.add_argument("--days", type=int, default=7, help="За сколько последних дней считать воронку/ошибки/позиции (по умолчанию 7)")
+    parser.add_argument("--last-month", action="store_true",
+                         help="Отчёт за ПРЕДЫДУЩИЙ календарный месяц целиком (вместо скользящих --days) — "
+                              "для месячного крона 1-го числа")
+    parser.add_argument("--trades-only", action="store_true",
+                         help="Короткий отчёт — только раздел 6 (сделки/P&L), без воронки/ошибок/комиссий/трейлинга")
     parser.add_argument("--out", type=str, default=None, help="Сохранить отчёт в файл (дополнительно к выводу в stdout)")
     parser.add_argument("--push-sheets", action="store_true", help="Записать сводку и полный текст в Google Sheets (WEEKLY_SUMMARY/WEEKLY_FULL)")
     parser.add_argument("--notify-telegram", action="store_true", help="Отправить короткое уведомление в Telegram со ссылкой (требует --push-sheets)")
     args = parser.parse_args()
 
-    since = datetime.now(timezone.utc) - timedelta(days=args.days)
-    run_ts = datetime.now(timezone.utc).isoformat()
-    journal = load_signal_journal()
-    orders = load_orders_log()
-    metrics: dict = {}
+    now = datetime.now(timezone.utc)
+    if args.last_month:
+        first_of_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_month_end = first_of_this_month - timedelta(seconds=1)
+        since = last_month_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        days = (now - since).days
+    else:
+        since = now - timedelta(days=args.days)
+        days = args.days
 
+    run_ts = now.isoformat()
+    metrics: dict = {}
     trades_summary_text, closed_trades = section_weekly_trades_pnl(since, metrics)
 
-    report = [
-        f"# Еженедельный отчёт по живой автостратегии",
-        f"",
-        f"Сгенерировано: {run_ts}",
-        f"Окно (воронка/ошибки/позиции): последние {args.days} дней (с {since.date()})",
-        f"",
-        section_funnel(journal, since, metrics),
-        section_executor_errors(journal, since),
-        section_commission_economics(metrics),
-        section_position_sizes(journal, orders, since, metrics),
-        section_dynamic_stop_health(since, metrics),
-        trades_summary_text,
-    ]
+    title = "Ежемесячный отчёт по живой автостратегии" if args.last_month else "Еженедельный отчёт по живой автостратегии"
+
+    if args.trades_only:
+        report = [
+            f"# {title}",
+            f"",
+            f"Сгенерировано: {run_ts}",
+            f"Период: с {since.date()} по {now.date()} ({days} дней)",
+            f"",
+            trades_summary_text,
+        ]
+    else:
+        journal = load_signal_journal()
+        orders = load_orders_log()
+        report = [
+            f"# {title}",
+            f"",
+            f"Сгенерировано: {run_ts}",
+            f"Окно (воронка/ошибки/позиции): последние {days} дней (с {since.date()})",
+            f"",
+            section_funnel(journal, since, metrics),
+            section_executor_errors(journal, since),
+            section_commission_economics(metrics),
+            section_position_sizes(journal, orders, since, metrics),
+            section_dynamic_stop_health(since, metrics),
+            trades_summary_text,
+        ]
     text = "\n".join(report)
     print(text)
 
@@ -587,13 +613,13 @@ def main():
 
     sheet_url = None
     if args.push_sheets:
-        sheet_url = push_to_google_sheets(metrics, text, run_ts, since, args.days, closed_trades=closed_trades)
+        sheet_url = push_to_google_sheets(metrics, text, run_ts, since, days, closed_trades=closed_trades)
 
     if args.notify_telegram:
         if not sheet_url:
             print("[Telegram] --notify-telegram без успешной записи в Sheets — уведомление не отправлено (нет ссылки)")
         else:
-            send_telegram_notification(sheet_url, since, args.days,
+            send_telegram_notification(sheet_url, since, days, is_monthly=args.last_month,
                                         trades_summary_text=trades_summary_text, closed_trades=closed_trades)
 
 
