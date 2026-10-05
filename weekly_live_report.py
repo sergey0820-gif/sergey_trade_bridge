@@ -339,11 +339,78 @@ def section_dynamic_stop_health(since: datetime, metrics: dict) -> str:
 
 
 # --------------------------------------------------------------------------
+# 6) Сделки за период: открыто/закрыто/оборот/результат + список закрытых
+# --------------------------------------------------------------------------
+
+REAL_TRADES_CSV = LOGS_DIR / "trade_history_real_trades.csv"
+OPEN_POSITIONS_CSV = LOGS_DIR / "trade_history_open_positions.csv"
+
+
+def section_weekly_trades_pnl(since: datetime, metrics: dict) -> tuple[str, list[dict]]:
+    """
+    Источник — logs/trade_history_real_trades.csv (round-trip сопоставление
+    открытие/закрытие уже сделано в trade_history_log.py, здесь просто
+    фильтруем по периоду) и logs/trade_history_open_positions.csv (ещё не
+    закрытые). Возвращает (текст для отчёта/Telegram, список закрытых
+    сделок для таблицы в Sheets/приложенного файла).
+    """
+    lines = ["## 6. Сделки за период", ""]
+    closed_rows: list[dict] = []
+
+    if not REAL_TRADES_CSV.exists():
+        lines.append("_logs/trade_history_real_trades.csv не найден — раздел пропущен._")
+        lines.append("")
+        return "\n".join(lines), closed_rows
+
+    df = pd.read_csv(REAL_TRADES_CSV)
+    df["open_date"] = pd.to_datetime(df["open_date"], utc=True, errors="coerce")
+    df["close_date"] = pd.to_datetime(df["close_date"], utc=True, errors="coerce")
+
+    closed = df[df["close_date"] >= since].sort_values("close_date")
+    opened_and_closed = df[df["open_date"] >= since]
+
+    n_opened = len(opened_and_closed)
+    if OPEN_POSITIONS_CSV.exists():
+        dfo = pd.read_csv(OPEN_POSITIONS_CSV)
+        dfo["open_date"] = pd.to_datetime(dfo["open_date"], utc=True, errors="coerce")
+        n_opened += len(dfo[dfo["open_date"] >= since])
+
+    n_closed = len(closed)
+    turnover = float((closed["open_price_rub"] * closed["qty"]).sum()
+                      + (closed["close_price_rub"] * closed["qty"]).sum()) if n_closed else 0.0
+    net_pnl = float(closed["net_pnl_rub"].sum()) if n_closed else 0.0
+
+    lines += [
+        f"Открыто сделок: **{n_opened}**",
+        f"Закрыто сделок: **{n_closed}**",
+        f"Оборот по закрытым сделкам: {turnover:,.0f}₽",
+        f"Результат по закрытым сделкам: {net_pnl:+,.2f}₽",
+        "",
+    ]
+
+    for _, r in closed.iterrows():
+        closed_rows.append({
+            "ticker": r["ticker"], "side": r["direction"], "entry_price": r["open_price_rub"],
+            "qty": int(r["qty"]), "exit_price": r["close_price_rub"],
+            "pnl_rub": round(float(r["net_pnl_rub"]), 2),
+            "open_date": r["open_date"].strftime("%Y-%m-%d %H:%M") if pd.notna(r["open_date"]) else "",
+            "close_date": r["close_date"].strftime("%Y-%m-%d %H:%M") if pd.notna(r["close_date"]) else "",
+        })
+
+    metrics.update({
+        "weekly_opened": int(n_opened), "weekly_closed": int(n_closed),
+        "weekly_turnover": round(turnover, 2), "weekly_net_pnl": round(net_pnl, 2),
+    })
+    return "\n".join(lines), closed_rows
+
+
+# --------------------------------------------------------------------------
 # Google Sheets (--push-sheets) — переиспользует инфраструктуру sheet_bridge.py
 # --------------------------------------------------------------------------
 
 WS_SUMMARY = "WEEKLY_SUMMARY" + os.getenv("SHEETS_TAB_SUFFIX", "")
 WS_FULL = "WEEKLY_FULL" + os.getenv("SHEETS_TAB_SUFFIX", "")
+WS_CLOSED_TRADES = "WEEKLY_CLOSED_TRADES" + os.getenv("SHEETS_TAB_SUFFIX", "")
 SUMMARY_HEADER = [
     "run_ts", "days_window", "since", "signals_generated", "rules_pass", "rules_reject",
     "llm_approve", "llm_reject", "executed", "stale", "crypto_filtered", "executor_error",
@@ -351,11 +418,17 @@ SUMMARY_HEADER = [
     "orders_in_window", "notional_median", "pct_qty1",
     "dyn_stop_events_total", "dyn_stop_breakeven", "dyn_stop_trail",
     "dyn_stop_unrecoverable_skip", "dyn_stop_post_breakeven_confirmed",
+    "weekly_opened", "weekly_closed", "weekly_turnover", "weekly_net_pnl",
 ]
 FULL_HEADER = ["run_ts", "days_window", "since", "full_report_markdown"]
+CLOSED_TRADES_HEADER = [
+    "run_ts", "ticker", "side", "entry_price", "qty", "exit_price", "pnl_rub",
+    "open_date", "close_date",
+]
 
 
-def push_to_google_sheets(summary: dict, full_text: str, run_ts: str, since: datetime, days: int) -> Optional[str]:
+def push_to_google_sheets(summary: dict, full_text: str, run_ts: str, since: datetime, days: int,
+                           closed_trades: Optional[list] = None) -> Optional[str]:
     """Возвращает URL таблицы при успехе, None при отключённой/нерабочей конфигурации."""
     import os as _os
 
@@ -388,21 +461,31 @@ def push_to_google_sheets(summary: dict, full_text: str, run_ts: str, since: dat
             ws = sh.worksheet(title)
         except gspread.exceptions.WorksheetNotFound:
             ws = sh.add_worksheet(title=title, rows=2000, cols=max(30, len(header)))
-            ws.append_row(header, value_input_option="RAW")
+            ws.append_row(header, value_input_option="USER_ENTERED")
             return ws
         if not ws.get_all_values():
-            ws.append_row(header, value_input_option="RAW")
+            ws.append_row(header, value_input_option="USER_ENTERED")
         return ws
 
     ws_summary = open_or_create(WS_SUMMARY, SUMMARY_HEADER)
     row = {"run_ts": run_ts, "days_window": days, "since": str(since.date()), **summary}
-    ws_summary.append_row([row.get(h, "") for h in SUMMARY_HEADER], value_input_option="RAW")
+    ws_summary.append_row([row.get(h, "") for h in SUMMARY_HEADER], value_input_option="USER_ENTERED")
 
     ws_full = open_or_create(WS_FULL, FULL_HEADER)
-    ws_full.append_row([run_ts, days, str(since.date()), full_text], value_input_option="RAW")
+    ws_full.append_row([run_ts, days, str(since.date()), full_text], value_input_option="USER_ENTERED")
+
+    if closed_trades:
+        ws_closed = open_or_create(WS_CLOSED_TRADES, CLOSED_TRADES_HEADER)
+        rows_to_append = [
+            [run_ts, t["ticker"], t["side"], t["entry_price"], t["qty"], t["exit_price"],
+             t["pnl_rub"], t["open_date"], t["close_date"]]
+            for t in closed_trades
+        ]
+        ws_closed.append_rows(rows_to_append, value_input_option="USER_ENTERED")
 
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
-    print(f"[Sheets] записано в {WS_SUMMARY} и {WS_FULL}: {url}")
+    print(f"[Sheets] записано в {WS_SUMMARY}, {WS_FULL}"
+          + (f", {WS_CLOSED_TRADES}" if closed_trades else "") + f": {url}")
     return url
 
 
@@ -410,7 +493,8 @@ def push_to_google_sheets(summary: dict, full_text: str, run_ts: str, since: dat
 # Telegram (--notify-telegram) — переиспользует TELEGRAM_BOT_TOKEN/CHAT_ID
 # --------------------------------------------------------------------------
 
-def send_telegram_notification(sheet_url: str, since: datetime, days: int) -> bool:
+def send_telegram_notification(sheet_url: str, since: datetime, days: int,
+                                 trades_summary_text: str = "", closed_trades: Optional[list] = None) -> bool:
     import os as _os
 
     token = _os.getenv("TELEGRAM_BOT_TOKEN")
@@ -420,29 +504,48 @@ def send_telegram_notification(sheet_url: str, since: datetime, days: int) -> bo
         return False
 
     try:
-        from telegram import Bot
+        from telegram import Bot, InputFile
         from telegram.request import HTTPXRequest
     except ImportError:
         print("[Telegram] python-telegram-bot не установлен — пропуск")
         return False
 
     import asyncio
+    import io
 
     proxy_url = _os.getenv("TELEGRAM_PROXY_URL", "")
+    prefix = _os.getenv("TELEGRAM_MSG_PREFIX", "")
     text = (
-        _os.getenv("TELEGRAM_MSG_PREFIX", "") +
+        prefix +
         f"📊 Еженедельный отчёт по автостратегии готов "
         f"(окно: последние {days} дней, с {since.date()}).\n"
         f"Подробности: {sheet_url}"
     )
+    if trades_summary_text:
+        text += "\n\n" + trades_summary_text.strip()
+
+    csv_buf = None
+    if closed_trades:
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["наименование", "сторона", "цена входа", "кол-во лотов", "цена выхода", "заработок, ₽"])
+        for t in closed_trades:
+            w.writerow([t["ticker"], t["side"], t["entry_price"], t["qty"], t["exit_price"], t["pnl_rub"]])
+        csv_buf = io.BytesIO(buf.getvalue().encode("utf-8-sig"))  # BOM — чтобы Excel корректно открыл кириллицу
+        csv_buf.name = f"closed_trades_{since.date()}.csv"
 
     async def _send():
         request = HTTPXRequest(proxy_url=proxy_url) if proxy_url else None
         bot = Bot(token=token, request=request)
         await bot.send_message(chat_id=chat_id, text=text)
+        if csv_buf is not None:
+            await bot.send_document(
+                chat_id=chat_id, document=InputFile(csv_buf, filename=csv_buf.name),
+                caption=prefix + "Закрытые сделки за период — таблица",
+            )
 
     asyncio.run(_send())
-    print("[Telegram] уведомление отправлено")
+    print("[Telegram] уведомление отправлено" + (" (+ таблица закрытых сделок)" if csv_buf is not None else ""))
     return True
 
 
@@ -460,6 +563,8 @@ def main():
     orders = load_orders_log()
     metrics: dict = {}
 
+    trades_summary_text, closed_trades = section_weekly_trades_pnl(since, metrics)
+
     report = [
         f"# Еженедельный отчёт по живой автостратегии",
         f"",
@@ -471,6 +576,7 @@ def main():
         section_commission_economics(metrics),
         section_position_sizes(journal, orders, since, metrics),
         section_dynamic_stop_health(since, metrics),
+        trades_summary_text,
     ]
     text = "\n".join(report)
     print(text)
@@ -481,13 +587,14 @@ def main():
 
     sheet_url = None
     if args.push_sheets:
-        sheet_url = push_to_google_sheets(metrics, text, run_ts, since, args.days)
+        sheet_url = push_to_google_sheets(metrics, text, run_ts, since, args.days, closed_trades=closed_trades)
 
     if args.notify_telegram:
         if not sheet_url:
             print("[Telegram] --notify-telegram без успешной записи в Sheets — уведомление не отправлено (нет ссылки)")
         else:
-            send_telegram_notification(sheet_url, since, args.days)
+            send_telegram_notification(sheet_url, since, args.days,
+                                        trades_summary_text=trades_summary_text, closed_trades=closed_trades)
 
 
 if __name__ == "__main__":
