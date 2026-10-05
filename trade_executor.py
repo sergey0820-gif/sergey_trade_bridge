@@ -102,6 +102,8 @@ except ValueError:
     RISK_PER_TRADE = 0.01
     logger.warning("RISK_PER_TRADE в .env не число: %s", RISK_PER_TRADE_STR)
 
+MAX_MARGIN_UTILIZATION = float(os.getenv("MAX_MARGIN_UTILIZATION", "0.8"))
+
 # STRATEGY.md п.2: авто-выбор market/limit по отклонению цены от сигнала.
 # Полный порог — тот же, что уже используется postprocess_candidates.py для
 # отсева протухших сигналов; порог для "бить рынком" — вдвое строже по умолчанию.
@@ -205,6 +207,27 @@ def get_live_capital(client: Client, account_id: str, fallback: float) -> float:
             fallback,
         )
         return fallback
+
+
+def get_margin_headroom(client: Client, account_id: str, max_margin_utilization: float) -> float:
+    """
+    Свободный запас маржи в рублях: liquid_portfolio*max_margin_utilization -
+    starting_margin. Независимый вызов client.users.get_margin_attributes()
+    — trade_executor.py отдельный подпроцесс без общего состояния с
+    auto_executor.py (см. DESIGN_margin_aware_sizing.md), поэтому считает
+    сам, не полагаясь на то, что auto_executor.py уже проверил маржу
+    несколько секунд назад — состояние счёта могло измениться.
+
+    Исключение НЕ ловится здесь намеренно — вызывающий код должен явно
+    решить fail-safe поведение (отказ во входе), а не тихо продолжить с
+    несвежими/отсутствующими данными.
+    """
+    from tinkoff.invest.utils import money_to_decimal
+
+    m = client.users.get_margin_attributes(account_id=account_id)
+    liquid = float(money_to_decimal(m.liquid_portfolio))
+    starting = float(money_to_decimal(m.starting_margin))
+    return liquid * max_margin_utilization - starting
 
 
 # -------------------------
@@ -583,6 +606,8 @@ def calc_quantity_from_risk(
     lot_size: int,
     capital: float,
     risk_per_trade: float,
+    go_per_lot: Optional[float] = None,
+    available_margin_headroom: Optional[float] = None,
 ) -> int:
     """
     Расчёт количества лотов от риска:
@@ -590,6 +615,19 @@ def calc_quantity_from_risk(
         R = |entry - stop_price|
         стоимость_лота ≈ entry * lot_size
         qty_lots = риск_в_руб / (R * lot_size)
+
+    go_per_lot/available_margin_headroom — НОВОЕ (DESIGN_margin_aware_sizing.md,
+    2026-08-13): для фьючерсов ограничивает риск-based объём реальной
+    доступной маржой. None у обоих аргументов — акции или margin-aware
+    проверка не запрашивалась (старое поведение, не тронуто). Вызывающий
+    код (main()) отвечает за fail-safe: если для фьючерса не удалось
+    получить ГО/маржу, сюда НЕ передавать None молча — это должно быть
+    отдельное явное решение отказать во входе, см. design-документ.
+
+    Возврат 0 (не прежний fallback "1 лот") означает "нельзя войти" —
+    ГО не позволяет открыть даже минимальный объём. Вызывающий код обязан
+    проверять quantity == 0 и отменять вход, а не пытаться разместить
+    0-лотовый ордер.
     """
     entry = float(entry)
     stop_price = float(stop_price)
@@ -626,6 +664,30 @@ def calc_quantity_from_risk(
         qty_float,
         qty,
     )
+
+    if go_per_lot is not None and available_margin_headroom is not None:
+        if go_per_lot <= 0:
+            logger.error(
+                "go_per_lot некорректен (%.2f₽) — не можем проверить ГО, fail-safe: возвращаю 0",
+                go_per_lot,
+            )
+            return 0
+        max_affordable_qty = int(available_margin_headroom // go_per_lot)
+        if max_affordable_qty < 1:
+            logger.error(
+                "ГО не позволяет открыть даже 1 лот: доступно %.2f₽, нужно %.2f₽/лот — вход отменён",
+                available_margin_headroom,
+                go_per_lot,
+            )
+            return 0
+        if max_affordable_qty < qty:
+            logger.warning(
+                "Риск-based объём (%d лотов) урезан лимитом ГО до %d лотов "
+                "(доступно %.2f₽, ГО/лот %.2f₽)",
+                qty, max_affordable_qty, available_margin_headroom, go_per_lot,
+            )
+            qty = max_affordable_qty
+
     return qty
 
 
@@ -719,6 +781,7 @@ def main() -> None:
             sys.exit(1)
 
         lot_size = getattr(instrument, "lot", 1) or 1
+        is_futures = class_code.strip().upper() != "TQBR"
 
         if args.qty is not None and args.qty > 0:
             quantity = int(args.qty)
@@ -726,13 +789,74 @@ def main() -> None:
         else:
             live_capital = get_live_capital(client, TINKOFF_ACCOUNT_ID, fallback=CAPITAL)
             logger.info("Капитал для расчёта риска: %.2f (живой портфель)", live_capital)
+
+            go_per_lot: Optional[float] = None
+            available_margin_headroom: Optional[float] = None
+
+            if is_futures:
+                # margin-aware sizing (DESIGN_margin_aware_sizing.md, 2026-08-13):
+                # fail-safe — любая ошибка получения ГО/маржи здесь отменяет
+                # вход явно, НЕ откатывается молча на риск-only формулу
+                # (это и был баг BRU6, 2026-08-04).
+                try:
+                    available_margin_headroom = get_margin_headroom(
+                        client, TINKOFF_ACCOUNT_ID, MAX_MARGIN_UTILIZATION
+                    )
+                    side_l = side.lower()
+                    go_field = (
+                        instrument.initial_margin_on_buy
+                        if side_l in ("long", "buy")
+                        else instrument.initial_margin_on_sell
+                    )
+                    go_value = quotation_to_float(go_field)
+                    if go_value <= 0:
+                        raise ValueError(f"ГО инструмента недоступно/некорректно: {go_value}")
+                    go_per_lot = go_value
+                    logger.info(
+                        "ГО/маржа для %s: ГО/лот=%.2f₽, свободный запас маржи=%.2f₽",
+                        ticker, go_per_lot, available_margin_headroom,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Fail-safe: не удалось получить ГО/маржу для %s (%s) — вход отменён: %s",
+                        ticker, class_code, e,
+                    )
+                    write_rejected_order(
+                        ticker=ticker,
+                        class_code=class_code,
+                        side=side,
+                        entry=entry,
+                        stop_price=stop_price,
+                        target_price=target_price,
+                        risk_pct=RISK_PER_TRADE * 100,
+                        reason="go_margin_check_failed_failsafe",
+                    )
+                    sys.exit(1)
+
             quantity = calc_quantity_from_risk(
                 entry=entry,
                 stop_price=stop_price,
                 lot_size=lot_size,
                 capital=live_capital,
                 risk_per_trade=RISK_PER_TRADE,
+                go_per_lot=go_per_lot,
+                available_margin_headroom=available_margin_headroom,
             )
+            if quantity == 0:
+                logger.error(
+                    "%s: ГО не позволяет открыть позицию (см. лог выше) — вход отменён", ticker
+                )
+                write_rejected_order(
+                    ticker=ticker,
+                    class_code=class_code,
+                    side=side,
+                    entry=entry,
+                    stop_price=stop_price,
+                    target_price=target_price,
+                    risk_pct=RISK_PER_TRADE * 100,
+                    reason="insufficient_go",
+                )
+                sys.exit(1)
 
         order_choice, limit_price = decide_order_type(
             market_data=market_data,
