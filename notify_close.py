@@ -2,7 +2,7 @@ import os
 import csv
 import asyncio
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from aiogram import Bot
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -13,6 +13,7 @@ ENV_PATH = BASE / ".env"
 POS_CSV = BASE / "out" / "positions.csv"
 OPS_CSV = BASE / "out" / "operations_today.csv"
 ORDERS_DIR = BASE / "orders"
+REAL_TRADES_CSV = BASE / "logs" / "trade_history_real_trades.csv"
 
 load_dotenv(dotenv_path=ENV_PATH)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -60,6 +61,62 @@ def read_operations_today(pth: Path):
     return ops
 
 
+def q_to_float(q) -> float:
+    if q is None:
+        return 0.0
+    return float(q.units) + float(q.nano) / 1e9
+
+
+def closed_trades_today(today_date) -> tuple[int, float]:
+    """(кол-во закрытых сделок, их суммарный net P&L в рублях) за today_date
+    (локальная дата, date-объект) — источник logs/trade_history_real_trades.csv
+    (пишет trade_history_log.py, round-trip вход/выход уже сопоставлен там).
+    Файл должен обновляться ДО вызова этого скрипта в тот же день (см.
+    crontab — trade_history_log.py --no-candles идёт перед notify_close.py)."""
+    if not REAL_TRADES_CSV.exists():
+        return 0, 0.0
+    n, pnl = 0, 0.0
+    with REAL_TRADES_CSV.open("r", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            close_date = row.get("close_date", "")
+            if not close_date:
+                continue
+            try:
+                dt = datetime.fromisoformat(close_date).astimezone()
+            except Exception:
+                continue
+            if dt.date() == today_date:
+                n += 1
+                pnl += safe_float(row.get("net_pnl_rub", 0))
+    return n, pnl
+
+
+def fetch_variation_margin_today(day_start_utc, day_end_utc):
+    """Реальная списанная/начисленная вариационная маржа за сегодня
+    (WRITING_OFF_VARMARGIN + ACCRUING_VARMARGIN) — та же логика, что
+    compute_reconciliation() в trade_history_log.py, но за один день.
+    Возвращает None, если TINKOFF_TOKEN/TINKOFF_ACCOUNT_ID недоступны или
+    запрос не удался (не блокируем отчёт — показываем прочерк)."""
+    token = os.getenv("TINKOFF_TOKEN")
+    account_id = os.getenv("TINKOFF_ACCOUNT_ID")
+    if not token or not account_id:
+        return None
+    try:
+        from tinkoff.invest import Client, OperationType, OperationState
+        with Client(token) as client:
+            resp = client.operations.get_operations(
+                account_id=account_id, from_=day_start_utc, to=day_end_utc,
+                state=OperationState.OPERATION_STATE_EXECUTED,
+            )
+        varmargin_types = (
+            OperationType.OPERATION_TYPE_WRITING_OFF_VARMARGIN,
+            OperationType.OPERATION_TYPE_ACCRUING_VARMARGIN,
+        )
+        return sum(q_to_float(o.payment) for o in resp.operations if o.type in varmargin_types)
+    except Exception:
+        return None
+
+
 def summarize():
     now_local = datetime.now(timezone.utc).astimezone()
     pos = read_positions(POS_CSV)
@@ -94,9 +151,22 @@ def summarize():
             except Exception:
                 continue
 
+    n_closed, closed_pnl = closed_trades_today(now_local.date())
+    day_start_utc = now_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    varmargin = fetch_variation_margin_today(day_start_utc, now_local.astimezone(timezone.utc))
+
     lines = [
         "📥 Sergey-Trade 2025 — вечерний отчёт",
         f"Дата: {now_local.strftime('%Y-%m-%d %H:%M %Z')}",
+        "",
+        f"Закрыто сделок сегодня: {n_closed}",
+        f"Результат по закрытым сделкам: {closed_pnl:+.2f}₽",
+        (
+            "Вариационная маржа сегодня: нет данных" if varmargin is None
+            else "Вариационная маржа сегодня: движения не было" if abs(varmargin) < 0.01
+            else f"Вариационная маржа сегодня: {varmargin:+.2f}₽"
+        ),
+        "",
         f"Операций за сегодня: {ops_cnt}",
         f"Файлов заявок/сигналов за сегодня (orders/): {orders_cnt}",
         f"Нереализованный PnL (оценка): {total_unreal:.2f}",
