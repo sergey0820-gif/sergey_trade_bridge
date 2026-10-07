@@ -95,6 +95,16 @@ def fetch_variation_margin_today(day_start_utc, day_end_utc):
     """Реальная списанная/начисленная вариационная маржа за сегодня
     (WRITING_OFF_VARMARGIN + ACCRUING_VARMARGIN) — та же логика, что
     compute_reconciliation() в trade_history_log.py, но за один день.
+
+    ВАЖНО: используем get_operations_by_cursor (не get_operations) — у
+    "старого" get_operations() поле .type приходит ЧЕЛОВЕКОЧИТАЕМОЙ
+    СТРОКОЙ на русском (например, "Списание вариационной маржи"), а не
+    enum OperationType, из-за чего сравнение `o.type ==
+    OperationType.OPERATION_TYPE_...` молча никогда не совпадает (баг,
+    найденный 2026-10-07 — функция всегда возвращала 0 вместо реальной
+    суммы). get_operations_by_cursor отдаёт настоящий enum, как и
+    trade_history_log.py.
+
     Возвращает None, если TINKOFF_TOKEN/TINKOFF_ACCOUNT_ID недоступны или
     запрос не удался (не блокируем отчёт — показываем прочерк)."""
     token = os.getenv("TINKOFF_TOKEN")
@@ -102,17 +112,18 @@ def fetch_variation_margin_today(day_start_utc, day_end_utc):
     if not token or not account_id:
         return None
     try:
-        from tinkoff.invest import Client, OperationType, OperationState
+        from tinkoff.invest import Client, OperationType
+        from tinkoff.invest.schemas import GetOperationsByCursorRequest
         with Client(token) as client:
-            resp = client.operations.get_operations(
-                account_id=account_id, from_=day_start_utc, to=day_end_utc,
-                state=OperationState.OPERATION_STATE_EXECUTED,
+            req = GetOperationsByCursorRequest(
+                account_id=account_id, from_=day_start_utc, to=day_end_utc, cursor="", limit=1000,
             )
+            resp = client.operations.get_operations_by_cursor(request=req)
         varmargin_types = (
             OperationType.OPERATION_TYPE_WRITING_OFF_VARMARGIN,
             OperationType.OPERATION_TYPE_ACCRUING_VARMARGIN,
         )
-        return sum(q_to_float(o.payment) for o in resp.operations if o.type in varmargin_types)
+        return sum(q_to_float(o.payment) for o in resp.items if o.type in varmargin_types)
     except Exception:
         return None
 
