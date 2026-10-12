@@ -109,7 +109,7 @@ def load_active_stop_types(c: Client) -> Dict[str, Set[StopOrderType]]:
     items = c.stop_orders.get_stop_orders(account_id=ACCOUNT_ID).stop_orders
     for o in items:
         uid = o.instrument_uid
-        t   = o.stop_order_type
+        t   = o.order_type  # поле называется order_type, не stop_order_type (проверено на реальном SDK 2026-10-12)
         res.setdefault(uid, set()).add(t)
     return res
 

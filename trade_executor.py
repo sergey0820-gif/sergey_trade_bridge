@@ -298,6 +298,9 @@ def write_rejected_order(
 
 
 def place_immediate_stops(
+    client: Client,
+    account_id: str,
+    instrument_uid: str,
     ticker: str,
     class_code: str,
     side: str,
@@ -311,27 +314,65 @@ def place_immediate_stops(
     по активным стоп-заявкам (get_active_stop_uids), поэтому задвоения не
     будет: если эта немедленная постановка не удалась, запись в
     pending_stops.csv остаётся резервным механизмом.
+
+    ВАЖНО (найдено 2026-10-12, реальный инцидент — 5 из 6 позиций без
+    стопа несколько часов): раньше вызывался place_stop_order() с
+    параметрами ticker/class_code/quantity_lots/stop_order_type — ни
+    одного из которых у функции в trade_utils/price_helper.py не
+    существует — вызов ВСЕГДА падал с TypeError, немедленная постановка
+    не работала никогда. Резервный путь (pending_stops.csv ->
+    stop_manager.py) тоже был сломан отдельным багом (stop_manager.py:112,
+    o.stop_order_type -> o.order_type) — оба фикса в одном коммите.
+
+    Вызывает client.stop_orders.post_stop_order() НАПРЯМУЮ (не через
+    place_stop_order() из price_helper.py) — зеркалит точный, уже
+    подтверждённый на реальных ордерах паттерн stop_manager.py::place_stop()
+    (включая exchange_order_type=MARKET и price_type по типу инструмента:
+    TQBR -> CURRENCY, иначе -> POINT), а не менее проверенный хелпер,
+    который и сам никогда не был живым путём исполнения до этого фикса.
     """
-    from trade_utils.price_helper import place_stop_order
+    from uuid import uuid4
+    from tinkoff.invest import (
+        StopOrderDirection, StopOrderType, StopOrderExpirationType,
+        ExchangeOrderType, PriceType,
+    )
+    from tinkoff.invest.utils import decimal_to_quotation
+    from decimal import Decimal
 
-    direction = "SELL" if side.lower() in ("long", "buy") else "BUY"
+    direction = (
+        StopOrderDirection.STOP_ORDER_DIRECTION_SELL if side.lower() in ("long", "buy")
+        else StopOrderDirection.STOP_ORDER_DIRECTION_BUY
+    )
+    price_type = (
+        PriceType.PRICE_TYPE_CURRENCY if (class_code or "").upper() == "TQBR"
+        else PriceType.PRICE_TYPE_POINT
+    )
 
-    for stop_type, price in (("STOP_LOSS", stop_price), ("TAKE_PROFIT", target_price)):
+    for kind, label, price in (
+        (StopOrderType.STOP_ORDER_TYPE_STOP_LOSS, "STOP_LOSS", stop_price),
+        (StopOrderType.STOP_ORDER_TYPE_TAKE_PROFIT, "TAKE_PROFIT", target_price),
+    ):
         try:
-            place_stop_order(
-                ticker=ticker,
-                class_code=class_code,
-                quantity_lots=quantity_lots,
+            price_q = decimal_to_quotation(Decimal(str(price)))
+            client.stop_orders.post_stop_order(
+                account_id=account_id,
+                instrument_id=instrument_uid,
+                quantity=quantity_lots,
                 direction=direction,
-                stop_order_type=stop_type,
-                stop_price=price,
+                stop_order_type=kind,
+                expiration_type=StopOrderExpirationType.STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCEL,
+                exchange_order_type=ExchangeOrderType.EXCHANGE_ORDER_TYPE_MARKET,
+                price_type=price_type,
+                stop_price=price_q,
+                price=price_q,
+                order_id=str(uuid4()),
             )
-            logger.info("Немедленный %s выставлен для %s (%s)", stop_type, ticker, class_code)
+            logger.info("Немедленный %s выставлен для %s (%s)", label, ticker, class_code)
         except Exception as e:
             logger.warning(
                 "Не удалось немедленно выставить %s для %s (%s): %s "
                 "(резерв — stop_manager.py по pending_stops.csv)",
-                stop_type,
+                label,
                 ticker,
                 class_code,
                 e,
@@ -886,6 +927,9 @@ def main() -> None:
 
         if order_id is not None and not dry_run:
             place_immediate_stops(
+                client,
+                account_id=TINKOFF_ACCOUNT_ID,
+                instrument_uid=instrument_uid,
                 ticker=ticker,
                 class_code=class_code,
                 side=side,
