@@ -240,16 +240,32 @@ def get_portfolio_positions(client, account_id: str):
 
     result = []
     for p in positions:
-        # интересуют только акции и фьючерсы
+        # интересуют только акции и фьючерсы.
+        # КРИТИЧНО (найдено 2026-10-13): PortfolioPosition.instrument_type от
+        # operations.get_portfolio() реально возвращает "futures" (мн.ч.), а
+        # не "future" (ед.ч., как в других эндпоинтах вроде find_instrument).
+        # Проверено на реальном счёте. Старая проверка ("share","future")
+        # тихо отфильтровывала ВСЕ фьючерсные позиции — ни одна фьючерсная
+        # позиция ни разу не получала безубыток/трейлинг/give-back с момента
+        # введения этого модуля (в логах 0 обработок SPBFUT за всю историю).
         instr_type = getattr(p, "instrument_type", "")
-        if instr_type not in ("share", "future"):
+        if instr_type not in ("share", "future", "futures"):
             continue
 
         instrument_uid = getattr(p, "instrument_uid", "") or getattr(p, "instrument_id", "")
         if not instrument_uid:
             continue
 
-        qty_q: Quotation = getattr(p, "quantity", None)
+        # КРИТИЧНО (найдено 2026-10-13, реальный инцидент — RTKM): раньше брали
+        # p.quantity — это количество В ШТУКАХ ИНСТРУМЕНТА (акциях), а не в
+        # лотах. post_stop_order() ожидает количество в лотах. Для lot=1 разницы
+        # нет, но для акций с lot>1 (RTKM, AFLT — lot=10) заявка на закрытие
+        # уходила в 10 раз больше нужного: give-back exit по RTKM (лонг 8 лотов)
+        # отправил SELL на 80 лотов — закрыл лонг и сверху открыл SHORT 72 лота
+        # без какого-либо стопа. p.quantity_lots — то же самое поле, что уже
+        # использует проверенный stop_manager.py::get_position_lots_and_side(),
+        # и даёт количество сразу в лотах.
+        qty_q: Quotation = getattr(p, "quantity_lots", None)
         qty = quotation_to_float(qty_q) if qty_q is not None else 0.0
         if abs(qty) < 0.001:
             continue
