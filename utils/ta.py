@@ -24,6 +24,9 @@ STOP_MIN_ATR_MULT = 0.5  # нижняя граница риска — не уж�
 STOP_MAX_ATR_MULT = 3.0  # верхняя граница риска — не шире (не раздувать риск на сделку)
 STOP_BUFFER_ATR_MULT = 0.1  # запас за уровнем, чтобы не стоять ровно на хае/лоу
 
+# === Параметры триггера входа (пробой диапазона вместо пересечения EMA9/21) ===
+BREAKOUT_LOOKBACK_BARS = 10  # окно поиска диапазона на H1 — см. STRATEGY.md "Открытые вопросы" п.12
+
 @dataclass
 class TradeSetup:
     mode: Optional[Mode]
@@ -219,6 +222,49 @@ def _structural_target(
     fallback = entry + (risk * 3) if side == "long" else entry - (risk * 3)
     return fallback, "fallback_3R"
 
+
+def _recent_gap_unbroken(
+    df_d1: pd.DataFrame, side: Side, entry: float, *,
+    lookback_days: int, volume_mult: float, pct_threshold: float,
+) -> bool:
+    """
+    True, если за последние lookback_days дней БЫЛ гэп/скачок на
+    аномальном объёме (относительно медианы предыдущих 20 баров) в
+    СТОРОНУ сигнала, и entry его ещё не пробил (не закрылся выше high
+    гэп-дня для long / ниже low для short). Используется как "блокирующий"
+    сигнал — вызывающий код должен отказать во входе, если True.
+    """
+    need = lookback_days + 20
+    if len(df_d1) < need + 1:
+        return False  # недостаточно истории — не блокируем
+    window = df_d1.tail(need).reset_index(drop=True)
+    closes = window["close"].to_numpy()
+    volumes = window["volume"].to_numpy()
+    highs = window["high"].to_numpy()
+    lows = window["low"].to_numpy()
+    n = len(window)
+
+    for i in range(n - lookback_days, n):
+        if i < 20:
+            continue
+        prev_close = closes[i - 1]
+        if prev_close <= 0:
+            continue
+        pct_move = (closes[i] - prev_close) / prev_close
+        baseline_vol = np.median(volumes[i - 20:i])
+        if baseline_vol <= 0:
+            continue
+        vol_ratio = volumes[i] / baseline_vol
+        is_spike = vol_ratio >= volume_mult and abs(pct_move) >= pct_threshold
+        if not is_spike:
+            continue
+        if side == "long" and pct_move > 0 and entry <= highs[i]:
+            return True
+        if side == "short" and pct_move < 0 and entry >= lows[i]:
+            return True
+    return False
+
+
 # ---------------------------------
 # ОСНОВНОЙ АНАЛИЗ (Стратегия 9/21)
 # ---------------------------------
@@ -230,14 +276,35 @@ def analyze_trade_setup(
     require_d1_ema_trend: bool = False,
     min_volume_ratio: float = 0.0,
     min_ema_gap_pct: float = 0.0,
+    require_momentum_ok: bool = False,
+    momentum_window: int = 5,
+    momentum_fade_ratio: float = 0.6,
+    require_no_recent_unbroken_gap: bool = False,
+    gap_lookback_days: int = 15,
+    gap_volume_mult: float = 3.0,
+    gap_pct_threshold: float = 0.05,
 ) -> TradeSetup:
     """
-    Основная логика поиска сигналов:
+    Основная логика поиска сигналов (изменено 2026-10-13, см. STRATEGY.md
+    "Открытые вопросы" п.12 — замена триггера, не добавка поверх старого):
     1. Тренд на D1 подтвержден RSI > 50 (для лонга) или RSI < 50 (для шорта).
-    2. Вход на H1 при пересечении EMA 9 и EMA 21.
+    2. Вход на H1 при ПРОБОЕ диапазона последних BREAKOUT_LOOKBACK_BARS
+       часовых баров (цена закрытия выше максимума/ниже минимума этого
+       окна, текущий бар в окно не входит) + объём дня (D1) не ниже своей
+       20-дневной средней.
+
+    До 2026-10-13 триггером было пересечение EMA9/21 на H1. Протестировано
+    7 альтернативных триггеров (entry_variants.py + backtest_entry_variants.py,
+    один и тот же риск-менеджмент — капа цели из п.9, структурный стоп из
+    п.10 — для честного сравнения, менялся только момент входа) — пробой
+    диапазона + объём дал экспектацию в ~4 раза выше и просадку вдвое
+    ниже прежнего триггера на истории 60 тикеров/12 мес., устойчиво в
+    обеих половинах периода, по тикерам и по всем протестированным
+    режимам рынка (включая боковик — см. п.12 для полных цифр).
 
     Опциональные доп. фильтры подтверждения сигнала (выключены по умолчанию,
-    не меняют боевое поведение, пока не проверены бэктестом):
+    не меняют боевое поведение, пока не проверены бэктестом для НОВОГО
+    триггера — тестировались против старого EMA9/21, см. п.11):
     - require_d1_ema_trend: помимо RSI, требовать цену D1 выше/ниже EMA50 D1
       (RSI>50/<50 сам по себе слабо отличает реальный тренд от флэта).
     - min_volume_ratio: требовать volume_ratio_d1 не ниже порога (0.0 = без
@@ -246,7 +313,24 @@ def analyze_trade_setup(
       все сигналы с объёмом ниже своей скользящей средней).
     - min_ema_gap_pct: требовать, чтобы на баре сигнала EMA9/EMA21 разошлись
       не меньше чем на эту долю цены (0.0 = без фильтра) — отсекает
-      пограничные, едва состоявшиеся пересечения.
+      пограничные, едва состоявшиеся пересечения. С 2026-10-13 НЕ
+      участвует в новом триггере (пробой диапазона — не момент
+      пересечения EMA) — параметр оставлен в сигнатуре для обратной
+      совместимости, но не на что гейтить, пока триггер не EMA-based.
+    - require_momentum_ok: отсекать сигналы с "затухающим" движением — когда
+      последний отрезок в сторону сигнала (momentum_window баров) заметно
+      короче предыдущего (меньше momentum_fade_ratio от него). Проверка
+      только на H1 (df_h4), без памяти дальше двух последних отрезков —
+      грубая, но дёшевая прокси для "волны становятся короче", которую
+      человек видит глазами на графике. См. _momentum_ok.
+    - require_no_recent_unbroken_gap: отсекать вход, если за последние
+      gap_lookback_days дней на D1 был гэп/скачок на аномальном объёме
+      (объём >= gap_volume_mult от медианы предыдущих 20 баров И ход цены
+      >= gap_pct_threshold), а цена с тех пор НЕ пробила экстремум этого
+      дня (для long — не закрылась выше его high, для short — не ниже его
+      low). Идея: вход сразу после разового новостного скачка, пока
+      бумага просто "стоит" на уровне пика — слабый сетап (случай ROSN,
+      2026-10-12, найдено по жалобе пользователя). См. _recent_gap_unbroken.
     """
     if df_d1.empty or df_h4.empty or len(df_h4) < 22:
         return TradeSetup(None, None, None, None, None, None, None, 1.0, "недостаточно данных")
@@ -285,22 +369,60 @@ def analyze_trade_setup(
             return True
         return abs(curr_e9 - curr_e21) / entry_price >= min_ema_gap_pct
 
+    def _momentum_ok(side: Side) -> bool:
+        if not require_momentum_ok:
+            return True
+        w = momentum_window
+        if len(df_h4) < w * 2 + 1:
+            return False  # недостаточно баров для сравнения двух отрезков — консервативно отказываем
+        closes = df_h4["close"]
+        recent_move = closes.iloc[-1] - closes.iloc[-1 - w]
+        prior_move = closes.iloc[-1 - w] - closes.iloc[-1 - 2 * w]
+        if side == "long":
+            if prior_move <= 0:
+                return True  # предыдущий отрезок не был движением вверх — нет базы для сравнения
+            return recent_move >= prior_move * momentum_fade_ratio
+        else:
+            if prior_move >= 0:
+                return True
+            return recent_move <= prior_move * momentum_fade_ratio
+
+    def _gap_ok(side: Side, entry_price: float) -> bool:
+        if not require_no_recent_unbroken_gap:
+            return True
+        return not _recent_gap_unbroken(
+            df_d1, side, entry_price, lookback_days=gap_lookback_days,
+            volume_mult=gap_volume_mult, pct_threshold=gap_pct_threshold,
+        )
+
     side: Optional[Side] = None
     reason = "сетап не найден"
 
-    # Условие LONG: пересечение снизу вверх + фильтр RSI (+ опц. подтверждения)
-    if curr_e9 > curr_e21 and prev_e9 <= prev_e21:
-        if (curr_rsi_h1 > 50 and curr_rsi_d1 > 50 and _d1_trend_ok("long")
-                and _volume_ok() and _ema_gap_ok(df_h4["close"].iloc[-1])):
-            side = "long"
-            reason = "EMA 9/21 Cross Up + RSI > 50"
+    # Триггер входа — пробой диапазона последних BREAKOUT_LOOKBACK_BARS
+    # часовых баров (текущий бар в диапазон не входит, иначе пробой самого
+    # себя) + подтверждение объёмом D1 >= своей 20-дневной средней +
+    # RSI D1 (тренд) — см. docstring выше и STRATEGY.md п.12. Заменяет
+    # прежний триггер пересечения EMA9/21 (H1 RSI в гейте больше не
+    # участвует — не было частью протестированного и выигравшего варианта).
+    n = BREAKOUT_LOOKBACK_BARS
+    if len(df_h4) >= n + 2:
+        highs_h1 = df_h4["high"]
+        lows_h1 = df_h4["low"]
+        closes_h1 = df_h4["close"]
+        range_high = highs_h1.iloc[-(n + 1):-1].max()
+        range_low = lows_h1.iloc[-(n + 1):-1].min()
+        breakout_entry = closes_h1.iloc[-1]
 
-    # Условие SHORT: пересечение сверху вниз + фильтр RSI (+ опц. подтверждения)
-    elif curr_e9 < curr_e21 and prev_e9 >= prev_e21:
-        if (curr_rsi_h1 < 50 and curr_rsi_d1 < 50 and _d1_trend_ok("short")
-                and _volume_ok() and _ema_gap_ok(df_h4["close"].iloc[-1])):
+        if (breakout_entry > range_high and curr_rsi_d1 > 50 and vol_ratio >= 1.0
+                and _d1_trend_ok("long") and _volume_ok() and _momentum_ok("long")
+                and _gap_ok("long", breakout_entry)):
+            side = "long"
+            reason = f"Breakout {n}bar high + vol>=1.0x + RSI D1 > 50"
+        elif (breakout_entry < range_low and curr_rsi_d1 < 50 and vol_ratio >= 1.0
+                and _d1_trend_ok("short") and _volume_ok() and _momentum_ok("short")
+                and _gap_ok("short", breakout_entry)):
             side = "short"
-            reason = "EMA 9/21 Cross Down + RSI < 50"
+            reason = f"Breakout {n}bar low + vol>=1.0x + RSI D1 < 50"
 
     if not side:
         return TradeSetup(None, None, None, None, None, curr_rsi_d1, curr_rsi_h1, vol_ratio, reason)
@@ -324,7 +446,7 @@ def analyze_trade_setup(
     reason = f"{reason} | stop={stop_source} | target={target_source}"
 
     return TradeSetup(
-        mode="trend",
+        mode="breakout",
         side=side,
         entry=entry,
         stop=stop,
