@@ -165,6 +165,85 @@ def variant_breakout_10bar_volume(df_d1: pd.DataFrame, df_h4: pd.DataFrame) -> T
     return None, None, ""
 
 
+# ---------------------------------------------------------------------------
+# 8)/9) breakout_10bar_volume — варианты, учитывающие вечернюю сессию FORTS
+# (2026-10-13). H1-свечи приходят из API БЕЗ фильтра по времени суток —
+# для фьючерсов в них реально есть бары вечерней сессии (19:00-23:50 МСК,
+# тоньше дневной, но не нулевой объём) и редкий предторговый бар (~06:00
+# МСК, объём единицы). У акций (TQBR) вечерней сессии нет вообще — эти
+# варианты для них совпадают с baseline.
+#
+# dayrange — диапазон (10-бар high/low) считается только по дневным барам
+#   (чище от вечернего шума), но пробой проверяется в любой час — изолирует
+#   вопрос "помогает ли чистый диапазон" отдельно от времени входа.
+# dayentry — диапазон как в baseline (все бары), но сигнал даётся ТОЛЬКО
+#   если текущий бар сам дневной — имитирует реальное боевое расписание
+#   (скан только 10:00-18:45 МСК). Разница baseline minus dayentry — это
+#   честная оценка вклада вечерних входов, которые сейчас в бою не берутся.
+
+MSK_DAY_START_UTC_HOUR = 7   # 10:00 МСК
+MSK_DAY_END_UTC_HOUR = 15    # бар 18:00 МСК (= 15:00 UTC) — последний дневной
+
+
+def _is_day_session(ts) -> bool:
+    return MSK_DAY_START_UTC_HOUR <= ts.hour <= MSK_DAY_END_UTC_HOUR
+
+
+def _volume_gate(side, entry, reason, df_d1: pd.DataFrame):
+    if side is None:
+        return None, None, ""
+    if "volume" not in df_d1.columns or df_d1["volume"].empty:
+        return side, entry, reason + "+vol"
+    vol = df_d1["volume"]
+    w = min(20, max(3, len(vol)))
+    ma = vol.rolling(w, min_periods=1).mean()
+    den = float(ma.iloc[-1]) if len(ma) else 0.0
+    vol_ratio = float(vol.iloc[-1]) / den if den > 0 else 1.0
+    if vol_ratio >= 1.0:
+        return side, entry, reason + "+vol"
+    return None, None, ""
+
+
+def _breakout_day_range(df_d1: pd.DataFrame, df_h4: pd.DataFrame, n: int) -> Tuple[Optional[Side], Optional[float], str]:
+    if len(df_h4) < n + 2 or "time" not in df_h4.columns:
+        return None, None, ""
+    is_day = df_h4["time"].apply(_is_day_session)
+    day_bars = df_h4[is_day]
+    # если текущий (последний) бар сам дневной — он ещё "формируется",
+    # исключаем его из диапазона (как в обычном _breakout); если текущий
+    # бар вечерний/предторговый — все дневные бары уже завершены, брать все
+    reference = day_bars.iloc[:-1] if bool(is_day.iloc[-1]) else day_bars
+    if len(reference) < n:
+        return None, None, ""
+    range_high = reference["high"].iloc[-n:].max()
+    range_low = reference["low"].iloc[-n:].min()
+    entry = df_h4["close"].iloc[-1]
+
+    if entry > range_high and _d1_rsi_trend_ok(df_d1, "long"):
+        return "long", entry, f"breakout_{n}bar_dayrange_high"
+    if entry < range_low and _d1_rsi_trend_ok(df_d1, "short"):
+        return "short", entry, f"breakout_{n}bar_dayrange_low"
+    return None, None, ""
+
+
+def variant_breakout_10bar_volume_dayrange(df_d1: pd.DataFrame, df_h4: pd.DataFrame) -> Tuple[Optional[Side], Optional[float], str]:
+    side, entry, reason = _breakout_day_range(df_d1, df_h4, 10)
+    return _volume_gate(side, entry, reason, df_d1)
+
+
+def _breakout_day_entry(df_d1: pd.DataFrame, df_h4: pd.DataFrame, n: int) -> Tuple[Optional[Side], Optional[float], str]:
+    if len(df_h4) < n + 2 or "time" not in df_h4.columns:
+        return None, None, ""
+    if not _is_day_session(df_h4["time"].iloc[-1]):
+        return None, None, ""
+    return _breakout(df_d1, df_h4, n)
+
+
+def variant_breakout_10bar_volume_dayentry(df_d1: pd.DataFrame, df_h4: pd.DataFrame) -> Tuple[Optional[Side], Optional[float], str]:
+    side, entry, reason = _breakout_day_entry(df_d1, df_h4, 10)
+    return _volume_gate(side, entry, reason, df_d1)
+
+
 ALL_ENTRY_VARIANTS = {
     "baseline": variant_baseline,
     "fast_ema_5_13": variant_fast_ema,
@@ -173,4 +252,6 @@ ALL_ENTRY_VARIANTS = {
     "price_above_ema9": variant_price_above_ema9,
     "macd_cross": variant_macd_cross,
     "breakout_10bar_volume": variant_breakout_10bar_volume,
+    "breakout_10bar_volume_dayrange": variant_breakout_10bar_volume_dayrange,
+    "breakout_10bar_volume_dayentry": variant_breakout_10bar_volume_dayentry,
 }

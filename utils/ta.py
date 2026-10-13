@@ -27,6 +27,14 @@ STOP_BUFFER_ATR_MULT = 0.1  # запас за уровнем, чтобы не с
 # === Параметры триггера входа (пробой диапазона вместо пересечения EMA9/21) ===
 BREAKOUT_LOOKBACK_BARS = 10  # окно поиска диапазона на H1 — см. STRATEGY.md "Открытые вопросы" п.12
 
+# Диапазон пробоя считаем только по барам дневной сессии — см. п.12 (day-range,
+# 2026-10-13). H1-свечи от API приходят без фильтра по времени суток: для
+# фьючерсов там реально есть вечерняя сессия FORTS (19:00-23:50 МСК) и
+# редкий предторговый бар (~06:00 МСК), оба тоньше по объёму. Время в df_h4
+# хранится в UTC, МСК = UTC+3.
+MSK_DAY_START_UTC_HOUR = 7   # 10:00 МСК
+MSK_DAY_END_UTC_HOUR = 15    # бар 18:00 МСК (= 15:00 UTC) — последний дневной
+
 @dataclass
 class TradeSetup:
     mode: Optional[Mode]
@@ -289,9 +297,11 @@ def analyze_trade_setup(
     "Открытые вопросы" п.12 — замена триггера, не добавка поверх старого):
     1. Тренд на D1 подтвержден RSI > 50 (для лонга) или RSI < 50 (для шорта).
     2. Вход на H1 при ПРОБОЕ диапазона последних BREAKOUT_LOOKBACK_BARS
-       часовых баров (цена закрытия выше максимума/ниже минимума этого
-       окна, текущий бар в окно не входит) + объём дня (D1) не ниже своей
-       20-дневной средней.
+       часовых баров ДНЕВНОЙ СЕССИИ (10:00-18:59 МСК — см. MSK_DAY_START_UTC_HOUR/
+       MSK_DAY_END_UTC_HOUR; вечерняя сессия FORTS и предторги в диапазон не
+       входят, добавлено 2026-10-13, см. п.12 "day-range") — цена закрытия
+       выше максимума/ниже минимума этого окна, текущий бар в окно не входит
+       — + объём дня (D1) не ниже своей 20-дневной средней.
 
     До 2026-10-13 триггером было пересечение EMA9/21 на H1. Протестировано
     7 альтернативных триггеров (entry_variants.py + backtest_entry_variants.py,
@@ -406,23 +416,40 @@ def analyze_trade_setup(
     # участвует — не было частью протестированного и выигравшего варианта).
     n = BREAKOUT_LOOKBACK_BARS
     if len(df_h4) >= n + 2:
-        highs_h1 = df_h4["high"]
-        lows_h1 = df_h4["low"]
         closes_h1 = df_h4["close"]
-        range_high = highs_h1.iloc[-(n + 1):-1].max()
-        range_low = lows_h1.iloc[-(n + 1):-1].min()
         breakout_entry = closes_h1.iloc[-1]
 
-        if (breakout_entry > range_high and curr_rsi_d1 > 50 and vol_ratio >= 1.0
-                and _d1_trend_ok("long") and _volume_ok() and _momentum_ok("long")
-                and _gap_ok("long", breakout_entry)):
-            side = "long"
-            reason = f"Breakout {n}bar high + vol>=1.0x + RSI D1 > 50"
-        elif (breakout_entry < range_low and curr_rsi_d1 < 50 and vol_ratio >= 1.0
-                and _d1_trend_ok("short") and _volume_ok() and _momentum_ok("short")
-                and _gap_ok("short", breakout_entry)):
-            side = "short"
-            reason = f"Breakout {n}bar low + vol>=1.0x + RSI D1 < 50"
+        # Диапазон — только по барам дневной сессии (см. константы выше и
+        # STRATEGY.md п.12, "day-range"): отбрасываем вечер FORTS и
+        # предторги, прежде чем брать последние n баров. Если текущий
+        # (последний) бар сам дневной — он ещё "формируется", исключаем его
+        # из диапазона (как раньше); если текущий бар вечерний/предторговый
+        # — все дневные бары уже завершены, исключать нечего. Если колонки
+        # "time" почему-то нет (не ожидается в боевом пути) — fail-open на
+        # старое поведение (диапазон по всем барам), а не глушим сигнал.
+        if "time" in df_h4.columns:
+            is_day = df_h4["time"].apply(
+                lambda t: MSK_DAY_START_UTC_HOUR <= t.hour <= MSK_DAY_END_UTC_HOUR
+            )
+            day_bars = df_h4[is_day]
+            reference = day_bars.iloc[:-1] if bool(is_day.iloc[-1]) else day_bars
+        else:
+            reference = df_h4.iloc[:-1]
+
+        if len(reference) >= n:
+            range_high = reference["high"].iloc[-n:].max()
+            range_low = reference["low"].iloc[-n:].min()
+
+            if (breakout_entry > range_high and curr_rsi_d1 > 50 and vol_ratio >= 1.0
+                    and _d1_trend_ok("long") and _volume_ok() and _momentum_ok("long")
+                    and _gap_ok("long", breakout_entry)):
+                side = "long"
+                reason = f"Breakout {n}bar(day) high + vol>=1.0x + RSI D1 > 50"
+            elif (breakout_entry < range_low and curr_rsi_d1 < 50 and vol_ratio >= 1.0
+                    and _d1_trend_ok("short") and _volume_ok() and _momentum_ok("short")
+                    and _gap_ok("short", breakout_entry)):
+                side = "short"
+                reason = f"Breakout {n}bar(day) low + vol>=1.0x + RSI D1 < 50"
 
     if not side:
         return TradeSetup(None, None, None, None, None, curr_rsi_d1, curr_rsi_h1, vol_ratio, reason)
