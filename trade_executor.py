@@ -41,6 +41,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from tinkoff.invest import (
     Client,
+    InstrumentIdType,
     InvestError,
     MoneyValue,
     OrderDirection,
@@ -254,6 +255,62 @@ def has_open_position(client: Client, account_id: str, instrument_uid: str) -> b
     for fut in resp.futures:
         if fut.instrument_uid == instrument_uid and int(fut.balance) != 0:
             return True
+    return False
+
+
+def has_open_position_on_underlying(
+    client: Client, account_id: str, candidate_ticker: str, candidate_class_code: str,
+    candidate_basic_asset: Optional[str],
+) -> bool:
+    """
+    2026-10-13: защита от двойной экспозиции на ОДИН базовый актив через
+    РАЗНЫЕ инструменты (например, уже открыта акция ROSN, а сигнал пришёл
+    на фьючерс RNZ6 — тот же риск два раза). has_open_position() выше
+    ловит только ТОЧНО тот же instrument_uid, эта функция — более широкий
+    случай.
+
+    Ключ базового актива кандидата:
+    - акция (class_code TQBR): ключ = её собственный тикер.
+    - фьючерс: ключ = candidate_basic_asset. Для фьючерсов НА АКЦИЮ это
+      ровно тикер акции (проверено: RNZ6 -> basic_asset='ROSN'), поэтому
+      акция и фьючерс на неё дают одинаковый ключ и ловятся. Для
+      индексных/товарных фьючерсов (RTS, нефть, золото) basic_asset — не
+      тикер акции ни одной бумаги, фильтр их не трогает (так и задумано
+      — это не тот же риск).
+
+    Fail-open (не блокируем), если не удалось определить ключ кандидата
+    или не удалось получить позиции/резолвнуть один из открытых
+    фьючерсов — это ДОПОЛНИТЕЛЬНЫЙ слой защиты поверх has_open_position(),
+    не единственный барьер.
+    """
+    candidate_key = (
+        candidate_ticker if (candidate_class_code or "").upper() == "TQBR" else candidate_basic_asset
+    )
+    if not candidate_key:
+        return False
+
+    try:
+        resp = client.operations.get_positions(account_id=account_id)
+    except Exception as e:
+        logger.warning("Не удалось получить позиции для проверки дублирующей экспозиции: %s", e)
+        return False
+
+    for sec in resp.securities:
+        if int(sec.balance) != 0 and sec.ticker == candidate_key:
+            return True
+
+    for fut in resp.futures:
+        if int(fut.balance) == 0:
+            continue
+        try:
+            info = client.instruments.future_by(
+                id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID, id=fut.instrument_uid
+            )
+            if info.instrument.basic_asset == candidate_key:
+                return True
+        except Exception:
+            continue
+
     return False
 
 
@@ -818,6 +875,24 @@ def main() -> None:
                 target_price=target_price,
                 risk_pct=RISK_PER_TRADE * 100,
                 reason="already_open_position",
+            )
+            sys.exit(1)
+
+        candidate_basic_asset = getattr(instrument, "basic_asset", None)
+        if has_open_position_on_underlying(client, TINKOFF_ACCOUNT_ID, ticker, class_code, candidate_basic_asset):
+            logger.error(
+                "Уже есть открытая позиция по тому же базовому активу (%s, через другой инструмент) "
+                "— вход отменён, чтобы не удваивать экспозицию.", ticker,
+            )
+            write_rejected_order(
+                ticker=ticker,
+                class_code=class_code,
+                side=side,
+                entry=entry,
+                stop_price=stop_price,
+                target_price=target_price,
+                risk_pct=RISK_PER_TRADE * 100,
+                reason="already_open_on_underlying",
             )
             sys.exit(1)
 
