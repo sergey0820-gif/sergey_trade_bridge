@@ -31,6 +31,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -67,6 +68,9 @@ TELEGRAM_PROXY_URL = os.getenv("TELEGRAM_PROXY_URL", "")
 CANDIDATES_LLM_APPROVED = BASE_DIR / "candidates_llm_approved.csv"
 STATE_PATH = STATE_DIR / "telegram_state.json"
 RESEND_COOLDOWN_MIN = int(os.getenv("RESEND_COOLDOWN_MIN", "240"))
+# Тот же порог свежести, что и у исполнения (auto_executor.py::is_fresh) —
+# нарочно общий env var, чтобы оба места всегда были согласованы.
+CANDIDATE_TTL_SEC = int(os.getenv("AUTO_EXECUTE_CANDIDATE_TTL_SEC", "900"))
 
 
 @dataclass
@@ -146,6 +150,31 @@ def _save_state(st: Dict) -> None:
     tmp.replace(STATE_PATH)
 
 
+def _is_fresh(c: Candidate) -> bool:
+    """
+    КРИТИЧНО (найдено 2026-10-14, реальный случай): candidates_llm_approved.csv
+    не чистится между торговыми днями — последняя пачка кандидатов вчерашнего
+    дня (18:45 МСК) пролежала в файле всю ночь и утром ушла в Телеграм как
+    будто новый сигнал, хотя накануне вечером УЖЕ была отклонена
+    (двойная экспозиция) и к утру "протухла" по времени — auto_executor.py
+    её тоже отбросил (is_fresh/CANDIDATE_TTL_SEC), но ДО этого telegram_bridge
+    уже успел отправить уведомление. Антидубль (_cooldown_ok, по умолчанию
+    4 часа) не спасал — с момента предыдущей отправки прошло больше 4 часов,
+    хотя сам сигнал был уже давно неактуален. Проверяем возраст сигнала тем
+    же порогом, что и исполнение, ДО отправки, а не только дедуп по отправке.
+    """
+    ts_raw = (c.timestamp or "").strip()
+    if not ts_raw:
+        return False
+    try:
+        ts = datetime.strptime(ts_raw, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        logger.warning("Не удалось разобрать timestamp=%r для %s:%s — пропускаю", ts_raw, c.ticker, c.class_code)
+        return False
+    age_sec = (datetime.now() - ts).total_seconds()
+    return 0 <= age_sec <= CANDIDATE_TTL_SEC
+
+
 def _cooldown_ok(st: Dict, key: str) -> bool:
     last = st["sent"].get(key)
     if last and (time.time() - last) < RESEND_COOLDOWN_MIN * 60:
@@ -195,8 +224,13 @@ async def send_notifications() -> int:
     bot = Bot(token=TELEGRAM_BOT_TOKEN, request=request)
 
     sent = 0
+    stale_count = 0
     for c in candidates:
         key = _candidate_key(c)
+        if not _is_fresh(c):
+            stale_count += 1
+            logger.info("%s: протух по времени (ts=%s) — не отправляю", key, c.timestamp)
+            continue
         if not _cooldown_ok(st, key):
             logger.info("%s: антидубль (уже отправляли недавно) — пропускаю", key)
             continue
@@ -214,7 +248,7 @@ async def send_notifications() -> int:
 
     if sent:
         _save_state(st)
-    logger.info("telegram_bridge: отправлено %d/%d", sent, len(candidates))
+    logger.info("telegram_bridge: отправлено %d/%d (протухших: %d)", sent, len(candidates), stale_count)
     return 0
 
 
