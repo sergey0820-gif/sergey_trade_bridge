@@ -241,6 +241,19 @@ def has_open_position(client: Client, account_id: str, instrument_uid: str) -> b
     Проверка через client.operations.get_positions (тот же вызов, что
     positions_guard.py/stop_manager.py используют для построения карты позиций).
     Возвращает True, если по instrument_uid уже есть ненулевой баланс.
+
+    КРИТИЧНО (найдено 2026-10-19, реальный случай WUSH): раньше проверялся
+    ТОЛЬКО баланс по уже ИСПОЛНЕННЫМ позициям. Лимитная заявка на вход,
+    которая ещё не исполнилась (висит в стакане), сюда не попадала —
+    следующий скан-цикл (через 15-17 мин) находил тот же сигнал и спокойно
+    отправлял ВТОРОЙ вход на тот же инструмент, пока первый ещё жив. Реальный
+    инцидент: лимитка на 103 лота WUSH не исполнилась сразу, следующий цикл
+    почти повторил вход (отбило только случайным протуханием цены), третий
+    цикл всё же вошёл рыночным ордером на 102 лота — в моменте, не исполнись
+    первая заявка позже, позиция могла внезапно удвоиться без нового расчёта
+    риска. Теперь дополнительно проверяем client.orders.get_orders() —
+    она по умолчанию возвращает только АКТИВНЫЕ (неисполненные/частично
+    исполненные) обычные заявки, то есть ровно то, чего не хватало.
     """
     try:
         resp = client.operations.get_positions(account_id=account_id)
@@ -255,6 +268,22 @@ def has_open_position(client: Client, account_id: str, instrument_uid: str) -> b
     for fut in resp.futures:
         if fut.instrument_uid == instrument_uid and int(fut.balance) != 0:
             return True
+
+    try:
+        orders_resp = client.orders.get_orders(account_id=account_id)
+    except Exception as e:
+        logger.exception("Не удалось получить активные заявки для проверки открытых: %s", e)
+        return False
+
+    for o in orders_resp.orders:
+        if getattr(o, "instrument_uid", None) == instrument_uid:
+            logger.info(
+                "Уже есть активная (неисполненная) заявка на instrument_uid=%s "
+                "(order_id=%s) — считаем позицию уже открытой, повторный вход не нужен",
+                instrument_uid, o.order_id,
+            )
+            return True
+
     return False
 
 
