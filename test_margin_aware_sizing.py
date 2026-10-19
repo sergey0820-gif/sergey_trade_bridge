@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from trade_executor import calc_quantity_from_risk, get_margin_headroom  # noqa: E402
+from trade_executor import calc_quantity_from_risk, get_margin_headroom, rub_per_point_for_instrument  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -19,9 +19,9 @@ from trade_executor import calc_quantity_from_risk, get_margin_headroom  # noqa:
 def test_1_regression_shares_unchanged():
     """Акции: go_per_lot=None => побитово идентично старой формуле."""
     cases = [
-        dict(entry=250.0, stop_price=245.0, lot_size=10, capital=15000, risk_per_trade=0.02),
-        dict(entry=100.0, stop_price=98.0, lot_size=1, capital=50000, risk_per_trade=0.003),
-        dict(entry=3000.0, stop_price=2950.0, lot_size=1, capital=200000, risk_per_trade=0.005),
+        dict(entry=250.0, stop_price=245.0, rub_per_point=10, capital=15000, risk_per_trade=0.02),
+        dict(entry=100.0, stop_price=98.0, rub_per_point=1, capital=50000, risk_per_trade=0.003),
+        dict(entry=3000.0, stop_price=2950.0, rub_per_point=1, capital=200000, risk_per_trade=0.005),
     ]
     for c in cases:
         old_style = calc_quantity_from_risk(**c)  # go_per_lot/headroom не переданы (None по умолчанию)
@@ -33,11 +33,11 @@ def test_1_regression_shares_unchanged():
 def test_2_futures_go_sufficient_no_change():
     """Фьючерс, ГО с большим запасом => risk-based qty не меняется."""
     qty = calc_quantity_from_risk(
-        entry=82.85, stop_price=84.6614, lot_size=1, capital=18570.97, risk_per_trade=0.0025,
+        entry=82.85, stop_price=84.6614, rub_per_point=1, capital=18570.97, risk_per_trade=0.0025,
         go_per_lot=100.0, available_margin_headroom=1_000_000.0,  # запас с огромным избытком
     )
     qty_baseline = calc_quantity_from_risk(
-        entry=82.85, stop_price=84.6614, lot_size=1, capital=18570.97, risk_per_trade=0.0025,
+        entry=82.85, stop_price=84.6614, rub_per_point=1, capital=18570.97, risk_per_trade=0.0025,
     )
     assert qty == qty_baseline == 25, f"Ожидали 25 (как в реальном инциденте BRU6), получили qty={qty} baseline={qty_baseline}"
     print(f"OK 2: ГО с избытком — qty не урезан ({qty} лотов, совпадает с risk-based)")
@@ -54,7 +54,7 @@ def test_3_bru6_reproduction_insufficient_go():
     Главное: новая логика должна отклонить ДО попытки размещения ордера.
     """
     qty = calc_quantity_from_risk(
-        entry=82.85, stop_price=84.6614, lot_size=1, capital=18570.97, risk_per_trade=0.0025,
+        entry=82.85, stop_price=84.6614, rub_per_point=1, capital=18570.97, risk_per_trade=0.0025,
         go_per_lot=1000.0, available_margin_headroom=800.0,  # не хватает даже на 1 лот
     )
     assert qty == 0, f"BRU6-сценарий должен дать qty=0 (отказ ДО ордера), получили {qty}"
@@ -64,13 +64,13 @@ def test_3_bru6_reproduction_insufficient_go():
 def test_4_futures_go_partial_cap():
     """Фьючерс: risk-based qty=25 (как реальный BRU6), но ГО позволяет только 10."""
     risk_based_qty = calc_quantity_from_risk(
-        entry=82.85, stop_price=84.6614, lot_size=1, capital=18570.97, risk_per_trade=0.0025,
+        entry=82.85, stop_price=84.6614, rub_per_point=1, capital=18570.97, risk_per_trade=0.0025,
     )
     assert risk_based_qty == 25
     go_per_lot = 1000.0
     headroom = 10_500.0  # ровно на 10 лотов с небольшим запасом
     qty = calc_quantity_from_risk(
-        entry=82.85, stop_price=84.6614, lot_size=1, capital=18570.97, risk_per_trade=0.0025,
+        entry=82.85, stop_price=84.6614, rub_per_point=1, capital=18570.97, risk_per_trade=0.0025,
         go_per_lot=go_per_lot, available_margin_headroom=headroom,
     )
     assert qty == 10, f"Ожидали min(25, 10)=10, получили {qty}"
@@ -80,12 +80,12 @@ def test_4_futures_go_partial_cap():
 def test_5_go_per_lot_invalid_failsafe():
     """go_per_lot<=0 (некорректные/нулевые данные) => fail-safe qty=0, не старая формула молча."""
     qty = calc_quantity_from_risk(
-        entry=100.0, stop_price=98.0, lot_size=1, capital=50000, risk_per_trade=0.01,
+        entry=100.0, stop_price=98.0, rub_per_point=1, capital=50000, risk_per_trade=0.01,
         go_per_lot=0.0, available_margin_headroom=100_000.0,
     )
     assert qty == 0, f"go_per_lot=0 должен дать fail-safe qty=0, получили {qty}"
     qty2 = calc_quantity_from_risk(
-        entry=100.0, stop_price=98.0, lot_size=1, capital=50000, risk_per_trade=0.01,
+        entry=100.0, stop_price=98.0, rub_per_point=1, capital=50000, risk_per_trade=0.01,
         go_per_lot=-5.0, available_margin_headroom=100_000.0,
     )
     assert qty2 == 0, f"Отрицательный go_per_lot должен дать fail-safe qty=0, получили {qty2}"
@@ -95,12 +95,12 @@ def test_5_go_per_lot_invalid_failsafe():
 def test_6_headroom_non_positive():
     """available_margin_headroom<=0 (счёт уже на пределе маржи) => qty=0, не отрицательное число."""
     qty = calc_quantity_from_risk(
-        entry=100.0, stop_price=98.0, lot_size=1, capital=50000, risk_per_trade=0.01,
+        entry=100.0, stop_price=98.0, rub_per_point=1, capital=50000, risk_per_trade=0.01,
         go_per_lot=500.0, available_margin_headroom=0.0,
     )
     assert qty == 0, f"Нулевой запас маржи должен дать qty=0, получили {qty}"
     qty2 = calc_quantity_from_risk(
-        entry=100.0, stop_price=98.0, lot_size=1, capital=50000, risk_per_trade=0.01,
+        entry=100.0, stop_price=98.0, rub_per_point=1, capital=50000, risk_per_trade=0.01,
         go_per_lot=500.0, available_margin_headroom=-200.0,
     )
     assert qty2 == 0, f"Отрицательный запас маржи должен дать qty=0 (не отрицательное число), получили {qty2}"
@@ -111,7 +111,7 @@ def test_7_rounding_down():
     """available_margin_headroom // go_per_lot — дробный результат округляется ВНИЗ, не вверх."""
     # risk-based qty будет большим (капитал большой), ГО ограничит точно на грани
     qty = calc_quantity_from_risk(
-        entry=100.0, stop_price=99.0, lot_size=1, capital=10_000_000, risk_per_trade=0.02,
+        entry=100.0, stop_price=99.0, rub_per_point=1, capital=10_000_000, risk_per_trade=0.02,
         go_per_lot=1000.0, available_margin_headroom=9_980.0,  # 9.98 лота -> должно округлиться до 9, не 10
     )
     assert qty == 9, f"9980/1000=9.98 должно округлиться ВНИЗ до 9, получили {qty} (переоценка объёма — риск для реальных денег)"
@@ -148,6 +148,61 @@ def test_9_get_margin_headroom_propagates_exception():
         print("OK 9: исключение API прокидывается наружу (не проглатывается) — main() сможет применить fail-safe")
 
 
+# ---------------------------------------------------------------------------
+# Часть 3: rub_per_point_for_instrument() — реальный инцидент 2026-10-19
+# (GAZPF/CCG7: рубль/пункт у фьючерса ≠ instrument.lot)
+# ---------------------------------------------------------------------------
+
+def _fake_instrument(lot: int, mpi_units: int, mpi_nano: int, mpia_units: int, mpia_nano: int):
+    return SimpleNamespace(
+        lot=lot,
+        min_price_increment=SimpleNamespace(units=mpi_units, nano=mpi_nano),
+        min_price_increment_amount=SimpleNamespace(units=mpia_units, nano=mpia_nano),
+    )
+
+
+def test_10_share_uses_lot_ignores_mpi_fields():
+    """Акция (TQBR): курс = instrument.lot, поля min_price_increment* не читаются вообще."""
+    instr = _fake_instrument(lot=10, mpi_units=0, mpi_nano=0, mpia_units=0, mpia_nano=0)  # заведомо мусорные mpi/mpia
+    rate = rub_per_point_for_instrument(instr, "TQBR")
+    assert rate == 10.0, f"Для акции ожидали lot=10, получили {rate}"
+    print("OK 10: акция (TQBR) — курс = instrument.lot, поля min_price_increment* игнорируются")
+
+
+def test_11_futures_real_cases_gazpf_ccg7():
+    """Реальные случаи инцидента: GAZPF (курс 100, не 1), CCG7 (курс 10, не 1),
+    и контрольный случай где lot случайно совпадает с курсом (1:1)."""
+    # GAZPF: min_price_increment=0.01, min_price_increment_amount=1.0 => 100 руб/пункт
+    gazpf = _fake_instrument(lot=1, mpi_units=0, mpi_nano=10_000_000, mpia_units=1, mpia_nano=0)
+    rate_gazpf = rub_per_point_for_instrument(gazpf, "SPBFUT")
+    assert abs(rate_gazpf - 100.0) < 1e-6, f"GAZPF: ожидали 100.0 руб/пункт, получили {rate_gazpf}"
+
+    # CCG7 (какао): min_price_increment=0.1, min_price_increment_amount=1.0 => 10 руб/пункт
+    ccg7 = _fake_instrument(lot=1, mpi_units=0, mpi_nano=100_000_000, mpia_units=1, mpia_nano=0)
+    rate_ccg7 = rub_per_point_for_instrument(ccg7, "SPBFUT")
+    assert abs(rate_ccg7 - 10.0) < 1e-6, f"CCG7: ожидали 10.0 руб/пункт, получили {rate_ccg7}"
+
+    # SOZ6/AKZ6/VBH7-подобный: min_price_increment=1.0, amount=1.0 => 1 руб/пункт (lot=1 тут совпал бы случайно)
+    soz6 = _fake_instrument(lot=1, mpi_units=1, mpi_nano=0, mpia_units=1, mpia_nano=0)
+    rate_soz6 = rub_per_point_for_instrument(soz6, "SPBFUT")
+    assert abs(rate_soz6 - 1.0) < 1e-6, f"SOZ6-подобный: ожидали 1.0 руб/пункт, получили {rate_soz6}"
+
+    print(
+        f"OK 11: фьючерсы — GAZPF={rate_gazpf:.1f} руб/пункт (было бы 1 по старой формуле, "
+        f"занижение в 100 раз), CCG7={rate_ccg7:.1f} (занижение в 10 раз), "
+        f"SOZ6-подобный={rate_soz6:.1f} (тут lot случайно совпадал)"
+    )
+
+
+def test_12_futures_invalid_mpi_failsafe():
+    """min_price_increment<=0 (некорректные данные инструмента) — fail-safe на instrument.lot,
+    не деление на ноль и не исключение."""
+    broken = _fake_instrument(lot=5, mpi_units=0, mpi_nano=0, mpia_units=1, mpia_nano=0)
+    rate = rub_per_point_for_instrument(broken, "SPBFUT")
+    assert rate == 5.0, f"Ожидали fail-safe откат на lot=5, получили {rate}"
+    print("OK 12: min_price_increment<=0 — fail-safe откат на instrument.lot, не деление на ноль")
+
+
 if __name__ == "__main__":
     test_1_regression_shares_unchanged()
     test_2_futures_go_sufficient_no_change()
@@ -158,4 +213,7 @@ if __name__ == "__main__":
     test_7_rounding_down()
     test_8_get_margin_headroom_formula()
     test_9_get_margin_headroom_propagates_exception()
-    print("\nВСЕ ТЕСТЫ ПРОЙДЕНЫ (9/9)")
+    test_10_share_uses_lot_ignores_mpi_fields()
+    test_11_futures_real_cases_gazpf_ccg7()
+    test_12_futures_invalid_mpi_failsafe()
+    print("\nВСЕ ТЕСТЫ ПРОЙДЕНЫ (12/12)")

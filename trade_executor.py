@@ -727,10 +727,38 @@ def place_order(
 # -------------------------
 
 
+def rub_per_point_for_instrument(instrument, class_code: str) -> float:
+    """
+    Курс "рубль за 1.0 пункт цены инструмента, на 1 лот" — то, что реально
+    нужно для перевода риска в рублях в количество лотов (см.
+    calc_quantity_from_risk). Для акций (TQBR) цена и так в рублях за
+    штуку — курс = instrument.lot (штук в лоте). Для фьючерсов цена в
+    абстрактных пунктах — реальный курс рубль/пункт берётся из
+    min_price_increment_amount (рублей за 1 минимальный шаг цены) делённого
+    на min_price_increment (размер этого шага в пунктах), а НЕ из lot
+    (контрактов в лоте, почти всегда 1, к стоимости пункта отношения не
+    имеет). См. docstring calc_quantity_from_risk — реальный инцидент
+    2026-10-19 (GAZPF/CCG7).
+    """
+    is_futures = class_code.strip().upper() != "TQBR"
+    if not is_futures:
+        return float(getattr(instrument, "lot", 1) or 1)
+
+    mpi = quotation_to_float(instrument.min_price_increment)
+    mpia = quotation_to_float(instrument.min_price_increment_amount)
+    if mpi <= 0:
+        logger.warning(
+            "min_price_increment некорректен (%.6f) для фьючерса — fallback на lot=%s",
+            mpi, getattr(instrument, "lot", 1),
+        )
+        return float(getattr(instrument, "lot", 1) or 1)
+    return mpia / mpi
+
+
 def calc_quantity_from_risk(
     entry: float,
     stop_price: float,
-    lot_size: int,
+    rub_per_point: float,
     capital: float,
     risk_per_trade: float,
     go_per_lot: Optional[float] = None,
@@ -739,9 +767,27 @@ def calc_quantity_from_risk(
     """
     Расчёт количества лотов от риска:
         риск_в_руб = capital * risk_per_trade
-        R = |entry - stop_price|
-        стоимость_лота ≈ entry * lot_size
-        qty_lots = риск_в_руб / (R * lot_size)
+        R = |entry - stop_price|   (в единицах котировки инструмента)
+        rub_per_lot = R * rub_per_point
+        qty_lots = риск_в_руб / rub_per_lot
+
+    КРИТИЧНО (найдено 2026-10-19, реальный инцидент — GAZPF/CCG7):
+    параметр раньше назывался lot_size и в него передавался instrument.lot
+    (штук/лотов инструмента) — это ВЕРНО для акций (TQBR), где цена и так
+    в рублях за штуку, но НЕВЕРНО для фьючерсов, где цена в абстрактных
+    "пунктах" и реальный курс рубль/пункт берётся из СОВСЕМ ДРУГИХ полей
+    инструмента (min_price_increment_amount / min_price_increment), а
+    instrument.lot для фьючерса почти всегда просто "1" (контрактов в
+    лоте) и к стоимости пункта отношения не имеет. На практике курс
+    рубль/пункт у разных фьючерсов совпадал с lot_size СЛУЧАЙНО (SOZ6,
+    AKZ6, VBH7 — курс и правда 1.0) и НЕ совпадал у других (CCG7 — курс
+    10.0 вместо подставлявшегося 1, GAZPF — курс 100.0 вместо 1) — это
+    занижало расчётный риск в 10-100 раз и реально привело к потерям
+    -899₽ (CCG7) и -2056₽ (GAZPF) за один день 2026-10-15, почти весь
+    тогдашний убыток дня. Вызывающий код (main()) теперь обязан сам
+    посчитать правильный rub_per_point (lot_size для акций,
+    min_price_increment_amount/min_price_increment для фьючерсов) —
+    см. _rub_per_point_for_instrument().
 
     go_per_lot/available_margin_headroom — НОВОЕ (DESIGN_margin_aware_sizing.md,
     2026-08-13): для фьючерсов ограничивает риск-based объём реальной
@@ -760,11 +806,11 @@ def calc_quantity_from_risk(
     stop_price = float(stop_price)
     R = abs(entry - stop_price)
 
-    if R <= 0 or lot_size <= 0:
+    if R <= 0 or rub_per_point <= 0:
         logger.warning(
-            "Невозможно посчитать объём от риска (R=%.6f, lot_size=%s), возвращаю 1 лот",
+            "Невозможно посчитать объём от риска (R=%.6f, rub_per_point=%s), возвращаю 1 лот",
             R,
-            lot_size,
+            rub_per_point,
         )
         return 1
 
@@ -778,16 +824,16 @@ def calc_quantity_from_risk(
         return 1
 
     # Сколько рублей теряем на 1 лот до стопа
-    rub_per_lot = R * lot_size
+    rub_per_lot = R * rub_per_point
     qty_float = risk_rub / rub_per_lot
     qty = max(1, int(qty_float))
 
     logger.info(
-        "Расчёт объёма: capital=%.2f risk=%.4f R=%.4f lot_size=%s => qty≈%.2f -> %s лотов",
+        "Расчёт объёма: capital=%.2f risk=%.4f R=%.4f rub_per_point=%s => qty≈%.2f -> %s лотов",
         capital,
         risk_per_trade,
         R,
-        lot_size,
+        rub_per_point,
         qty_float,
         qty,
     )
@@ -925,7 +971,7 @@ def main() -> None:
             )
             sys.exit(1)
 
-        lot_size = getattr(instrument, "lot", 1) or 1
+        rub_per_point = rub_per_point_for_instrument(instrument, class_code)
         is_futures = class_code.strip().upper() != "TQBR"
 
         if args.qty is not None and args.qty > 0:
@@ -981,7 +1027,7 @@ def main() -> None:
             quantity = calc_quantity_from_risk(
                 entry=entry,
                 stop_price=stop_price,
-                lot_size=lot_size,
+                rub_per_point=rub_per_point,
                 capital=live_capital,
                 risk_per_trade=RISK_PER_TRADE,
                 go_per_lot=go_per_lot,
