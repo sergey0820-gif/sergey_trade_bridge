@@ -1075,7 +1075,24 @@ def main() -> None:
             logger.error("Ордер не был размещён, pending_stops записывать не буду.")
             sys.exit(1)
 
-        if order_id is not None and not dry_run:
+        # КРИТИЧНО (найдено 2026-11-05, реальный случай SSZ6/SMLT): раньше тут
+        # было `lots_executed or quantity` — если лимитный вход ЕЩЁ НЕ
+        # исполнился (lots_executed=0, частый случай — лимитки не исполняются
+        # мгновенно), `0 or quantity` давало quantity, и мы ставили SL/TP на
+        # ПОЛНЫЙ запрошенный объём для позиции, которой ещё не существует.
+        # Хуже: обычный вход-ордер по умолчанию живёт только до конца сессии
+        # (биржа), а SL/TP ставятся GOOD_TILL_CANCEL (брокер даёт ~1.5 месяца)
+        # — если лимитка так и не исполнится и её снимет биржа, SL/TP остаются
+        # висеть сиротами на полтора месяца без позиции за ними (реальный
+        # случай, обнаружено пользователем на SSZ6: вход "До 21:50", SL/TP
+        # "До 19.12"). Теперь ставим немедленные SL/TP ТОЛЬКО если вход уже
+        # реально исполнился (lots_executed>0 — для рыночного всегда так, для
+        # лимитного часто нет). Если не исполнился — полагаемся на
+        # write_pending_stop_row() ниже + резервный stop_manager.py (каждые
+        # 5 мин, уже проверено на реальных инцидентах): он видит актуальную
+        # позицию и реальное количество лотов ровно в момент фактического
+        # исполнения лимитки, без риска "сироты".
+        if order_id is not None and not dry_run and lots_executed:
             place_immediate_stops(
                 client,
                 account_id=TINKOFF_ACCOUNT_ID,
@@ -1083,9 +1100,15 @@ def main() -> None:
                 ticker=ticker,
                 class_code=class_code,
                 side=side,
-                quantity_lots=lots_executed or quantity,
+                quantity_lots=lots_executed,
                 stop_price=stop_price,
                 target_price=target_price,
+            )
+        elif order_id is not None and not dry_run:
+            logger.info(
+                "%s: вход не исполнился мгновенно (лимитный ордер, lots_executed=0) — "
+                "немедленные SL/TP не ставим, передаём stop_manager.py (резерв, каждые 5 мин)",
+                ticker,
             )
 
     # Записываем/обновляем pending_stops.csv уже после успешного (или dry-run) размещения
