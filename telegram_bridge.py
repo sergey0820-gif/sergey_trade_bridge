@@ -65,6 +65,13 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TELEGRAM_MSG_PREFIX = os.getenv("TELEGRAM_MSG_PREFIX", "")
 TELEGRAM_PROXY_URL = os.getenv("TELEGRAM_PROXY_URL", "")
+# Выключатель живых уведомлений о сигналах/сделках (2026-11-16, по просьбе
+# пользователя — проверяет состояние сам периодически в терминале, живые
+# уведомления только шумят). НЕ влияет на вечерний/недельный/месячный отчёт
+# (notify_close.py/weekly_live_report.py — отдельные скрипты, своя рассылка)
+# и НЕ влияет на исполнение сделок (auto_executor.py продолжает торговать
+# как обычно, меняется только отправка в Telegram).
+TELEGRAM_LIVE_SIGNALS_ENABLED = os.getenv("TELEGRAM_LIVE_SIGNALS_ENABLED", "1") == "1"
 CANDIDATES_LLM_APPROVED = BASE_DIR / "candidates_llm_approved.csv"
 STATE_PATH = STATE_DIR / "telegram_state.json"
 RESEND_COOLDOWN_MIN = int(os.getenv("RESEND_COOLDOWN_MIN", "240"))
@@ -210,6 +217,9 @@ def _build_text_body(c: Candidate) -> str:
 
 
 async def send_notifications() -> int:
+    if not TELEGRAM_LIVE_SIGNALS_ENABLED:
+        logger.info("TELEGRAM_LIVE_SIGNALS_ENABLED=0 — живые уведомления о сигналах выключены, ничего не отправляю")
+        return 0
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logger.error("Не заданы TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID в .env")
         return 2
